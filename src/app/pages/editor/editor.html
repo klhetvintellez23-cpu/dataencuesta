@@ -36,6 +36,12 @@
           <span class="material-symbols-outlined">save</span>
         </button>
       </div>
+      <div class="topbar-save-status" [attr.data-state]="saveStatusLabel().state" title="Estado del guardado">
+        <span class="material-symbols-outlined save-status-icon" [class.spinning]="saveStatusLabel().state === 'saving'">
+          {{ saveStatusLabel().icon }}
+        </span>
+        <span class="save-status-text">{{ saveStatusLabel().text }}</span>
+      </div>
       <div class="topbar-divider"></div>
       <button class="btn-actualizar" type="button" (click)="publish()" [disabled]="isSaving()">
         {{ survey()?.status === 'borrador' ? 'Publicar' : 'Actualizar' }}
@@ -48,10 +54,22 @@
   <div class="editor-body" [style.--sidebar-right-width.px]="effectiveRightSidebarWidth()">
     <aside class="editor-sidebar-left builder-pages-sidebar">
       <div class="builder-sidebar-heading"
-        style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 12px;">
+        style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-bottom: 12px;">
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
           <h2>Páginas</h2>
           <span>{{ getSurveyPageCount() }}</span>
+        </div>
+        <!-- Sidebar search -->
+        <div class="sidebar-search-wrap">
+          <span class="material-symbols-outlined sidebar-search-icon">search</span>
+          <input class="sidebar-search-input" type="text" placeholder="Buscar pregunta…"
+            [ngModel]="sidebarSearch()" (ngModelChange)="sidebarSearch.set($event)" />
+          @if (sidebarSearch()) {
+          <button class="sidebar-search-clear" type="button" (click)="sidebarSearch.set('')"
+            title="Limpiar búsqueda">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+          }
         </div>
         <button type="button" (click)="showTemplateModal = true"
           style="display: flex; align-items: center; gap: 4px; background: transparent; border: none; color: #64748b; font-size: 10px; font-weight: 700; cursor: pointer; padding: 0; text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.2s;"
@@ -60,6 +78,22 @@
           Importar plantilla
         </button>
       </div>
+
+      <!-- Search results -->
+      @if (sidebarSearchResults(); as results) {
+      <ul class="structure-list sidebar-search-results">
+        @if (results.length === 0) {
+        <li class="sidebar-search-empty">Sin resultados para "{{ sidebarSearch() }}"</li>
+        }
+        @for (r of results; track r.questionIndex) {
+        <li class="structure-item sidebar-search-item" (click)="jumpToSearchResult(r.questionIndex, r.pageIndex)">
+          <span class="sidebar-search-num">{{ r.questionIndex + 1 }}</span>
+          <span class="sidebar-search-text">{{ r.text }}</span>
+          <span class="sidebar-search-page">Pág. {{ r.pageIndex + 1 }}</span>
+        </li>
+        }
+      </ul>
+      } @else {
       <ul class="structure-list builder-page-list">
         <li class="structure-item builder-page-item" [class.active]="activeSection() === 'welcome'"
           (click)="activeSection.set('welcome')">
@@ -135,6 +169,7 @@
           </div>
         </li>
       </ul>
+      } <!-- end @else search results -->
     </aside>
 
     <main class="editor-canvas">
@@ -533,6 +568,10 @@
     </section>
 
     <div class="preview-floating-controls" aria-label="Controles de vista previa">
+      <span class="preview-test-badge">
+        <span class="material-symbols-outlined">science</span>
+        Modo de prueba — las respuestas no se guardan
+      </span>
       <div class="public-preview-segment">
         <button type="button" [class.active]="previewDevice !== 'mobile'" (click)="setPreviewDevice('desktop')"
           title="Vista de computadora">
@@ -545,6 +584,10 @@
           Teléfono
         </button>
       </div>
+      <button class="preview-restart-btn" type="button" (click)="restartPreview()" title="Volver al inicio">
+        <span class="material-symbols-outlined">restart_alt</span>
+        Reiniciar
+      </button>
     </div>
   </div>
   }
@@ -669,7 +712,7 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
             </div>
             <label class="switch">
               <input type="checkbox" [checked]="surveyPreventDuplicates()"
-                (change)="surveyPreventDuplicates.set(!surveyPreventDuplicates())" />
+                (change)="surveyPreventDuplicates.set(!surveyPreventDuplicates()); applySettingsToSurvey()" />
               <span class="slider"></span>
             </label>
           </div>
@@ -687,7 +730,7 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
             </div>
             <label class="switch">
               <input type="checkbox" [checked]="surveySkipWelcome()"
-                (change)="surveySkipWelcome.set(!surveySkipWelcome())" />
+                (change)="surveySkipWelcome.set(!surveySkipWelcome()); applySettingsToSurvey()" />
               <span class="slider"></span>
             </label>
           </div>
@@ -728,8 +771,11 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
         </div>
 
         <div class="settings-modal-footer">
-          <button class="btn-settings-cancel" type="button" (click)="setActiveShareSection('link')">Cancelar</button>
-          <button class="btn-settings-save" type="button" (click)="saveSurveySettings()">Guardar configuración</button>
+          <p class="settings-autosave-note">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">check_circle</span>
+            Los cambios se guardan automáticamente.
+          </p>
+          <button class="btn-settings-save" type="button" (click)="saveSurveySettings()">Listo</button>
         </div>
       </div>
     </div>
@@ -1294,7 +1340,7 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
   }
 </div>
 
-@if (saveError() || infoMessage()) {
+@if (saveError() || infoMessage() || deletePendingQuestion()) {
 <div class="editor-toast-stack" aria-live="polite">
   @if (saveError()) {
   <div class="editor-toast editor-toast-error">
@@ -1306,6 +1352,13 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
   <div class="editor-toast editor-toast-info">
     <span class="material-symbols-outlined">check_circle</span>
     <p>{{ infoMessage() }}</p>
+  </div>
+  }
+  @if (deletePendingQuestion(); as pending) {
+  <div class="editor-toast editor-toast-undo">
+    <span class="material-symbols-outlined">delete</span>
+    <p>Pregunta eliminada</p>
+    <button class="toast-undo-btn" type="button" (click)="undoRemoveQuestion()">Deshacer</button>
   </div>
   }
 </div>
@@ -1539,7 +1592,12 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
         <div class="question-pro-label">Respuestas</div>
         @if (isChoiceType(q.type)) {
         @for (option of q.options; track option.id; let oi = $index) {
-        <div class="question-pro-option">
+        <div class="question-pro-option" draggable="true"
+          (dragstart)="onOptionDragStart(oi)"
+          (dragover)="onOptionDragOver($event)"
+          (drop)="onOptionDrop(editingQuestionIndex, oi)"
+          [class.option-drag-over]="false">
+          <span class="option-drag-handle material-symbols-outlined" title="Arrastrar para reordenar">drag_indicator</span>
           <input type="text" [ngModel]="option.texto" (ngModelChange)="updateOption(editingQuestionIndex, oi, $event)"
             placeholder="Respuesta..." />
           <button type="button" title="Eliminar respuesta" (click)="removeOption(editingQuestionIndex, oi)"
@@ -1714,78 +1772,93 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
 @if (showTemplateModal) {
 <div class="template-modal-backdrop" (click)="showTemplateModal = false"></div>
 <div class="template-modal design-center-modal">
-  <header class="design-center-topbar">
-    <div class="design-center-brand">
+
+  <!-- Header -->
+  <header class="dc2-header">
+    <div class="dc2-brand">
       <span class="material-symbols-outlined">dashboard_customize</span>
       <strong>Centro de diseño</strong>
     </div>
-
-    <nav class="design-center-tabs" aria-label="Centro de diseño">
-      <button type="button" [class.active]="designCenterTab === 'combine'" (click)="designCenterTab = 'combine'">
-        Recetas
+    <nav class="dc2-tabs" aria-label="Secciones del centro de diseño">
+      <button type="button" class="dc2-tab" [class.active]="designCenterTab === 'templates'"
+        (click)="designCenterTab = 'templates'">
+        <span class="material-symbols-outlined">article</span>
+        Plantillas
       </button>
-      <button type="button" [class.active]="designCenterTab === 'base'" (click)="designCenterTab = 'base'">
-        Bases
-      </button>
-      <button type="button" [class.active]="designCenterTab === 'presentation'"
-        (click)="designCenterTab = 'presentation'">
-        Inicio
-      </button>
-      <button type="button" [class.active]="designCenterTab === 'visual'" (click)="designCenterTab = 'visual'">
-        Visual
-      </button>
-      <button type="button" [class.active]="designCenterTab === 'questions'" (click)="designCenterTab = 'questions'">
-        Preguntas
-      </button>
-      <button type="button" [class.active]="designCenterTab === 'completion'" (click)="designCenterTab = 'completion'">
-        Final
+      <button type="button" class="dc2-tab" [class.active]="designCenterTab === 'design'"
+        (click)="designCenterTab = 'design'">
+        <span class="material-symbols-outlined">palette</span>
+        Diseño visual
       </button>
     </nav>
-
     <button class="template-close-btn" type="button" (click)="showTemplateModal = false" aria-label="Cerrar">
       <span class="material-symbols-outlined">close</span>
     </button>
   </header>
 
-  <main class="design-center-canvas">
-    <div class="design-center-content">
-      <div class="design-center-heading">
-        <h2>
-          @switch (designCenterTab) {
-          @case ('combine') { Explorar recetas }
-          @case ('base') { Explorar bases }
-          @case ('presentation') { Pantalla de inicio }
-          @case ('visual') { Estilos visuales }
-          @case ('questions') { Diseño de preguntas }
-          @case ('completion') { Pantalla final }
-          }
-        </h2>
-        <p>
-          @switch (designCenterTab) {
-          @case ('combine') { Selecciona un punto de partida completo para el diseño sin reemplazar tus preguntas
-          actuales. }
-          @case ('base') { Elige una estructura con preguntas listas para editar. Esta opción reemplaza el contenido
-          actual. }
-          @case ('presentation') { Ajusta cómo empieza la encuesta, el texto inicial y la llamada principal. }
-          @case ('visual') { Cambia fondo, color, imagen y presencia visual manteniendo el contenido. }
-          @case ('questions') { Define cómo se leen y responden las preguntas dentro de la encuesta. }
-          @case ('completion') { Ajusta el cierre y el tono de agradecimiento final. }
-          }
-        </p>
+  <!-- Tab: Plantillas -->
+  @if (designCenterTab === 'templates') {
+  <main class="design-center-canvas dc2-canvas">
+    <div class="dc2-warning-banner">
+      <span class="material-symbols-outlined">warning</span>
+      <div>
+        <strong>Esta acción reemplaza tus preguntas actuales</strong>
+        <span>Elige una plantilla como punto de partida. El diseño visual se mantendrá.</span>
       </div>
-
-      @if (designCenterTab !== 'base') {
-      <span class="design-center-safety">Conserva tus preguntas</span>
-      } @else {
-      <span class="design-center-safety warn">Reemplaza contenido</span>
+    </div>
+    <div class="dc2-toolbar">
+      <div class="base-category-chips">
+        @for (cat of baseTemplateCategories(); track cat) {
+        <button type="button" [class.active]="selectedBaseCategory === cat"
+          (click)="selectedBaseCategory = cat">{{ cat }}</button>
+        }
+      </div>
+      <a class="template-view-all" routerLink="/templates" [queryParams]="{ returnTo: '/editor/' + survey()?.id }"
+        (click)="showTemplateModal = false">
+        Ver todas
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+    </div>
+    <div class="template-grid base-template-list dc2-template-grid">
+      @for (tpl of filteredBaseTemplates(); track tpl.name) {
+      <div class="template-card base-template-card">
+        <div class="base-template-preview" [style.background]="tpl.brand.backgroundColor || '#f8f9ff'">
+          <div class="base-template-window" [style.color]="tpl.brand.textColor || '#1d1b20'">
+            <span [style.background]="tpl.brand.primaryColor || '#440789'"></span>
+            <i></i>
+            <i></i>
+            <i></i>
+          </div>
+        </div>
+        <div class="template-card-body">
+          <span class="template-category">{{ tpl.category }}</span>
+          <h3 class="template-name">{{ tpl.name }}</h3>
+          <p class="template-desc">{{ tpl.description }}</p>
+          <div class="base-template-meta">
+            <span>{{ tpl.questions.length }} preguntas</span>
+            <span>{{ tpl.brand.fontTitle || 'Inter' }}</span>
+          </div>
+          <button class="template-use-btn" (click)="applyTemplate(tpl.originalIndex)">Usar plantilla</button>
+        </div>
+      </div>
       }
     </div>
+  </main>
+  }
 
-    @if (designCenterTab === 'combine') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Recetas completas</span>
-        <strong>Recetas completas sin reemplazar preguntas</strong>
+  <!-- Tab: Diseño visual -->
+  @if (designCenterTab === 'design') {
+  <main class="design-center-canvas dc2-canvas">
+
+    <!-- Sección 1: Recetas completas -->
+    <section class="template-section dc2-section">
+      <div class="dc2-section-head">
+        <div>
+          <span class="dc2-section-tag">Punto de partida</span>
+          <h3>Recetas completas</h3>
+          <p>Aplica un look completo de una sola vez — colores, fuentes, estilo de preguntas y pantallas.</p>
+        </div>
+        <span class="dc2-safe-badge">Conserva tus preguntas</span>
       </div>
       <div class="design-combo-grid">
         @for (combo of designCombinations; track combo.kind) {
@@ -1798,13 +1871,17 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
         }
       </div>
     </section>
-    }
 
-    @if (designCenterTab === 'visual') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Diseños visuales</span>
-        <strong>Fondo, color, imagen, tipografía y estilo de tarjeta</strong>
+    <div class="dc2-divider"></div>
+
+    <!-- Sección 2: Estilo visual -->
+    <section class="template-section dc2-section">
+      <div class="dc2-section-head">
+        <div>
+          <span class="dc2-section-tag">Ambiente</span>
+          <h3>Estilo visual</h3>
+          <p>Fondo, paleta de color, imagen y tipografía. Cambia el look sin tocar las preguntas.</p>
+        </div>
       </div>
       <div class="visual-template-grid">
         @for (preset of visualDesignPresets; track preset.name) {
@@ -1819,59 +1896,22 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
               <em></em>
             </span>
           </span>
-          <span class="visual-template-copy"><strong>{{ preset.name }}</strong><small>{{ preset.description
-              }}</small></span>
+          <span class="visual-template-copy"><strong>{{ preset.name }}</strong><small>{{ preset.description }}</small></span>
         </button>
         }
       </div>
     </section>
-    }
 
-    @if (designCenterTab === 'presentation') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Inicios</span>
-        <strong>Distintas entradas para la encuesta</strong>
-      </div>
-      <div class="flow-template-grid">
-        @for (preset of presentationPresets; track preset.name) {
-        <button class="flow-template-card" [class.active]="isPresentationActive(preset)" type="button"
-          (click)="applyPresentationPreset(preset)">
-          <span class="material-symbols-outlined">{{ preset.icon }}</span>
-          <strong>{{ preset.name }}</strong>
-          <small>{{ preset.description }}</small>
-          <em>{{ preset.layout }} · {{ preset.ctaText }}</em>
-        </button>
-        }
-      </div>
-    </section>
-    }
+    <div class="dc2-divider"></div>
 
-    @if (designCenterTab === 'completion') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Finalizaciones</span>
-        <strong>Distintos cierres para confirmar o agradecer</strong>
-      </div>
-      <div class="flow-template-grid">
-        @for (preset of completionPresets; track preset.name) {
-        <button class="flow-template-card" [class.active]="isCompletionActive(preset)" type="button"
-          (click)="applyCompletionPreset(preset)">
-          <span class="material-symbols-outlined">{{ preset.icon }}</span>
-          <strong>{{ preset.name }}</strong>
-          <small>{{ preset.description }}</small>
-          <em>{{ preset.layout }} · {{ preset.title }}</em>
-        </button>
-        }
-      </div>
-    </section>
-    }
-
-    @if (designCenterTab === 'questions') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Diseño de preguntas</span>
-        <strong>Cambia la estructura visual del bloque</strong>
+    <!-- Sección 3: Diseño de preguntas -->
+    <section class="template-section dc2-section">
+      <div class="dc2-section-head">
+        <div>
+          <span class="dc2-section-tag">Tarjetas</span>
+          <h3>Diseño de preguntas</h3>
+          <p>Define el estilo visual de cada bloque de pregunta.</p>
+        </div>
       </div>
       <div class="question-template-grid">
         @for (style of questionStylePresets; track style.value) {
@@ -1889,54 +1929,58 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
         }
       </div>
     </section>
-    }
 
-    @if (designCenterTab === 'base') {
-    <section class="template-section">
-      <div class="template-section-head">
-        <span>Encuestas base</span>
-        <strong><em class="base-impact-pill">Cambia preguntas</em> Contenido prearmado para arrancar rápido</strong>
-      </div>
-      <div class="base-template-toolbar">
-        <div class="base-category-chips">
-          @for (cat of baseTemplateCategories(); track cat) {
-          <button type="button" [class.active]="selectedBaseCategory === cat" (click)="selectedBaseCategory = cat">{{
-            cat }}</button>
-          }
+    <div class="dc2-divider"></div>
+
+    <!-- Sección 4: Pantalla de inicio -->
+    <section class="template-section dc2-section">
+      <div class="dc2-section-head">
+        <div>
+          <span class="dc2-section-tag">Bienvenida</span>
+          <h3>Pantalla de inicio</h3>
+          <p>Cómo arranca la encuesta: el layout, el tono y el botón de entrada.</p>
         </div>
       </div>
-      <a class="template-view-all" routerLink="/templates" [queryParams]="{ returnTo: '/editor/' + survey()?.id }"
-        (click)="showTemplateModal = false">
-        Ver todas las plantillas
-        <span class="material-symbols-outlined">arrow_forward</span>
-      </a>
-      <div class="template-grid base-template-list">
-        @for (tpl of filteredBaseTemplates(); track tpl.name) {
-        <div class="template-card base-template-card">
-          <div class="base-template-preview" [style.background]="tpl.brand.backgroundColor || '#f8f9ff'">
-            <div class="base-template-window" [style.color]="tpl.brand.textColor || '#1d1b20'">
-              <span [style.background]="tpl.brand.primaryColor || '#440789'"></span>
-              <i></i>
-              <i></i>
-              <i></i>
-            </div>
-          </div>
-          <div class="template-card-body">
-            <span class="template-category">{{ tpl.category }}</span>
-            <h3 class="template-name">{{ tpl.name }}</h3>
-            <p class="template-desc">{{ tpl.description }}</p>
-            <div class="base-template-meta">
-              <span>{{ tpl.questions.length }} preguntas</span>
-              <span>{{ tpl.brand.fontTitle || 'Inter' }}</span>
-            </div>
-            <button class="template-use-btn" (click)="applyTemplate(tpl.originalIndex)">Crear con esta base</button>
-          </div>
-        </div>
+      <div class="flow-template-grid">
+        @for (preset of presentationPresets; track preset.name) {
+        <button class="flow-template-card" [class.active]="isPresentationActive(preset)" type="button"
+          (click)="applyPresentationPreset(preset)">
+          <span class="material-symbols-outlined">{{ preset.icon }}</span>
+          <strong>{{ preset.name }}</strong>
+          <small>{{ preset.description }}</small>
+          <em>{{ preset.layout }} · {{ preset.ctaText }}</em>
+        </button>
         }
       </div>
     </section>
-    }
+
+    <div class="dc2-divider"></div>
+
+    <!-- Sección 5: Pantalla final -->
+    <section class="template-section dc2-section">
+      <div class="dc2-section-head">
+        <div>
+          <span class="dc2-section-tag">Cierre</span>
+          <h3>Pantalla final</h3>
+          <p>El mensaje de agradecimiento y confirmación al terminar.</p>
+        </div>
+      </div>
+      <div class="flow-template-grid">
+        @for (preset of completionPresets; track preset.name) {
+        <button class="flow-template-card" [class.active]="isCompletionActive(preset)" type="button"
+          (click)="applyCompletionPreset(preset)">
+          <span class="material-symbols-outlined">{{ preset.icon }}</span>
+          <strong>{{ preset.name }}</strong>
+          <small>{{ preset.description }}</small>
+          <em>{{ preset.layout }} · {{ preset.title }}</em>
+        </button>
+        }
+      </div>
+    </section>
+
   </main>
+  }
+
 </div>
 }
 

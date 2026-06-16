@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnDestroy, OnInit, signal, computed } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, QueryList, ViewChildren, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject } from 'rxjs';
@@ -23,7 +23,7 @@ import { AnalyticsService } from '../../services/analytics.service';
 import { SupabaseService } from '../../services/supabase.service';
 
 type EditorTab = 'design' | 'preview' | 'collect' | 'analyze';
-type DesignCenterTab = 'combine' | 'base' | 'presentation' | 'visual' | 'questions' | 'completion';
+type DesignCenterTab = 'templates' | 'design';
 type ShareSection = 'dashboard' | 'link' | 'qr' | 'channels' | 'embed' | 'checklist' | 'analytics' | 'settings';
 type AnalyticsRange = '7d' | '14d' | '30d' | 'all';
 type QuestionChartView = 'bars' | 'donut' | 'pie' | 'table';
@@ -200,6 +200,40 @@ export class EditorPage implements OnInit, OnDestroy {
   surveyPreventDuplicates = signal(false);
   surveySkipWelcome = signal(false);
   surveyCloseDate = signal<string>('');
+
+  // #3 Persistent save status
+  hasUnsavedChanges = signal(false);
+  readonly saveStatusLabel = computed(() => {
+    if (this.isSaving()) return { text: 'Guardando…', icon: 'sync', state: 'saving' };
+    if (this.hasUnsavedChanges()) return { text: 'Sin guardar', icon: 'circle', state: 'unsaved' };
+    if (this.saved()) return { text: 'Guardado', icon: 'check_circle', state: 'saved' };
+    return { text: 'Guardado', icon: 'check_circle', state: 'idle' };
+  });
+
+  // #2 Pending delete (undo toast)
+  deletePendingQuestion = signal<{ question: Question; index: number; timeoutId: ReturnType<typeof setTimeout> } | null>(null);
+
+  // Feature: sidebar search
+  sidebarSearch = signal('');
+  readonly sidebarSearchResults = computed(() => {
+    const term = this.sidebarSearch().trim().toLowerCase();
+    if (!term) return null;
+    const questions = this.survey()?.questions ?? [];
+    const breaks = (this.survey()?.metadata as any)?.questionPageBreaks as number[] | undefined ?? [0];
+    return questions
+      .map((q, qi) => {
+        const pageIdx = breaks.filter(b => b <= qi).length - 1;
+        return { question: q, questionIndex: qi, pageIndex: Math.max(0, pageIdx), text: q.text || `Pregunta ${qi + 1}` };
+      })
+      .filter(r => r.text.toLowerCase().includes(term));
+  });
+
+  // Feature: drag-and-drop option reorder
+  private dragOptionIndex: number | null = null;
+
+  // Feature: preview restart
+  @ViewChildren(SurveySimulatorComponent) simulators!: QueryList<SurveySimulatorComponent>;
+  previewResetKey = signal(0);
   qrSize = signal(360);
   qrColor = signal('#111827');
   selectedQrPreset = signal<QrPresetId>('flyer');
@@ -358,7 +392,7 @@ export class EditorPage implements OnInit, OnDestroy {
   // Customization Tabs (Canva Style)
 
   currentTab: EditorTab = 'design';
-  designCenterTab: DesignCenterTab = 'combine';
+  designCenterTab: DesignCenterTab = 'templates';
 
   previewDevice: 'desktop' | 'tablet' | 'mobile' = 'desktop';
   selectedBaseCategory = 'Todas';
@@ -388,7 +422,7 @@ export class EditorPage implements OnInit, OnDestroy {
     if (index !== undefined) this.activeQuestionIndex.set(index);
   }
 
-  openDesignCenter(tab: DesignCenterTab = 'combine'): void {
+  openDesignCenter(tab: DesignCenterTab = 'templates'): void {
     this.designCenterTab = tab;
     this.showTemplateModal = true;
   }
@@ -2398,6 +2432,7 @@ export class EditorPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.commitRemoveQuestion();
     if (this.survey() && !this.isSaving()) {
       void this.executeSave();
     }
@@ -3244,10 +3279,69 @@ export class EditorPage implements OnInit, OnDestroy {
     this.queueSave();
   }
 
+  // Sidebar search: jump to the question's page and select it
+  jumpToSearchResult(questionIndex: number, pageIndex: number): void {
+    this.sidebarSearch.set('');
+    this.activeSection.set('questions');
+    this.activeQuestionPageIndex.set(pageIndex);
+    this.activeQuestionIndex.set(questionIndex);
+  }
+
+  // Option drag-and-drop reorder
+  onOptionDragStart(optionIndex: number): void {
+    this.dragOptionIndex = optionIndex;
+  }
+
+  onOptionDrop(questionIndex: number, targetIndex: number): void {
+    const from = this.dragOptionIndex;
+    this.dragOptionIndex = null;
+    if (from === null || from === targetIndex) return;
+    this.survey.update(survey => {
+      if (!survey) return survey;
+      const q = survey.questions[questionIndex];
+      if (!q) return survey;
+      const options = [...q.options];
+      const [moved] = options.splice(from, 1);
+      options.splice(targetIndex, 0, moved);
+      const questions = [...survey.questions];
+      questions[questionIndex] = { ...q, options };
+      return { ...survey, questions };
+    });
+    this.queueSave();
+  }
+
+  onOptionDragOver(event: DragEvent): void {
+    event.preventDefault();
+  }
+
+  // Preview restart
+  restartPreview(): void {
+    this.simulators.forEach(s => s.restart());
+  }
+
   removeQuestion(index: number): void {
+    // Commit any already-pending delete before queuing a new one
+    this.commitRemoveQuestion();
+
+    const survey = this.survey();
+    if (!survey) return;
+    const question = survey.questions[index];
+    if (!question) return;
+
+    const timeoutId = setTimeout(() => this.commitRemoveQuestion(), 5000);
+    this.deletePendingQuestion.set({ question, index, timeoutId });
+  }
+
+  commitRemoveQuestion(): void {
+    const pending = this.deletePendingQuestion();
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    this.deletePendingQuestion.set(null);
+
+    const { index } = pending;
     this.survey.update((survey) => {
       if (!survey) return null;
-      
+
       if (survey.metadata?.canvas?.screens) {
         const screens = survey.metadata.canvas.screens;
         const deletedScreenId = `question-${index}`;
@@ -3270,6 +3364,13 @@ export class EditorPage implements OnInit, OnDestroy {
     });
     this.activeQuestionIndex.update(idx => Math.max(0, idx - (idx >= index ? 1 : 0)));
     this.queueSave();
+  }
+
+  undoRemoveQuestion(): void {
+    const pending = this.deletePendingQuestion();
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    this.deletePendingQuestion.set(null);
   }
 
   duplicateQuestion(index: number): void {
@@ -4395,6 +4496,7 @@ export class EditorPage implements OnInit, OnDestroy {
 
   queueSave(): void {
     this.pushToHistory();
+    this.hasUnsavedChanges.set(true);
     this.saveSubject.next();
   }
 
@@ -5054,35 +5156,37 @@ export class EditorPage implements OnInit, OnDestroy {
     this.setActiveShareSection('settings');
   }
 
-  saveSurveySettings(): void {
+  applySettingsToSurvey(): void {
     this.survey.update(survey => {
       if (!survey) return survey;
       const metadata = { ...survey.metadata } as any;
-
       metadata.maxResponses = this.surveyMaxResponses() || undefined;
       metadata.responsePolicy = this.surveyPreventDuplicates() ? 'once-per-browser' : 'multiple';
       metadata.skipWelcomePage = this.surveySkipWelcome();
       metadata.closesAt = this.surveyCloseDate() || undefined;
       return { ...survey, metadata };
     });
-
     if (this.surveyCloseDate()) {
       this.publicationDeadline.set(this.surveyCloseDate());
     }
+    this.queueSave();
+  }
 
-    this.saveNow();
-    this.showInfo('Configuración de encuesta guardada con éxito.');
+  saveSurveySettings(): void {
+    this.applySettingsToSurvey();
     this.setActiveShareSection('link');
   }
 
   onMaxResponsesInput(event: Event): void {
     const val = (event.target as HTMLInputElement).value;
     this.surveyMaxResponses.set(val ? Number(val) : null);
+    this.applySettingsToSurvey();
   }
 
   onCloseDateInput(event: Event): void {
     const val = (event.target as HTMLInputElement).value;
     this.surveyCloseDate.set(val || '');
+    this.applySettingsToSurvey();
   }
 
   updateQrSize(value: string | number): void {
@@ -6946,6 +7050,7 @@ export class EditorPage implements OnInit, OnDestroy {
   }
 
   private pulseSavedState(): void {
+    this.hasUnsavedChanges.set(false);
     this.saved.set(true);
     setTimeout(() => this.saved.set(false), 2000);
   }

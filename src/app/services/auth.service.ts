@@ -9,6 +9,16 @@ export interface User {
   email: string;
 }
 
+interface LoginAttemptState {
+  count: number;
+  lockedUntil: number;
+}
+
+const LOGIN_ATTEMPTS_PREFIX = 'login_attempts_';
+const MAX_LOGIN_ATTEMPTS = 5;
+const BASE_LOCKOUT_MS = 30_000;
+const MAX_LOCKOUT_MS = 5 * 60_000;
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly supabaseService = inject(SupabaseService);
@@ -44,13 +54,62 @@ export class AuthService {
   async login(email: string, password: string): Promise<{ success: boolean; error?: string }> {
     if (!this.supabase) return { success: false, error: 'Falta configurar Supabase en public/env.js.' };
 
+    const throttle = this.checkLoginThrottle(email);
+    if (!throttle.allowed) {
+      return { success: false, error: `Demasiados intentos fallidos. Intenta de nuevo en ${throttle.remainingSeconds} segundos.` };
+    }
+
     const { error } = await this.supabase.auth.signInWithPassword({
       email,
       password
     });
 
-    if (error) return { success: false, error: this.mapError(error) };
+    if (error) {
+      this.registerFailedLoginAttempt(email);
+      return { success: false, error: this.mapError(error) };
+    }
+
+    this.resetLoginAttempts(email);
     return { success: true };
+  }
+
+  private getLoginAttemptState(email: string): LoginAttemptState {
+    try {
+      const raw = localStorage.getItem(LOGIN_ATTEMPTS_PREFIX + email.trim().toLowerCase());
+      if (!raw) return { count: 0, lockedUntil: 0 };
+      return JSON.parse(raw) as LoginAttemptState;
+    } catch {
+      return { count: 0, lockedUntil: 0 };
+    }
+  }
+
+  private saveLoginAttemptState(email: string, state: LoginAttemptState): void {
+    localStorage.setItem(LOGIN_ATTEMPTS_PREFIX + email.trim().toLowerCase(), JSON.stringify(state));
+  }
+
+  private checkLoginThrottle(email: string): { allowed: boolean; remainingSeconds: number } {
+    const { lockedUntil } = this.getLoginAttemptState(email);
+    const remainingMs = lockedUntil - Date.now();
+
+    if (remainingMs > 0) return { allowed: false, remainingSeconds: Math.ceil(remainingMs / 1000) };
+    return { allowed: true, remainingSeconds: 0 };
+  }
+
+  private registerFailedLoginAttempt(email: string): void {
+    const state = this.getLoginAttemptState(email);
+    const count = state.count + 1;
+    let lockedUntil = state.lockedUntil;
+
+    if (count >= MAX_LOGIN_ATTEMPTS) {
+      const lockoutMs = Math.min(BASE_LOCKOUT_MS * 2 ** (count - MAX_LOGIN_ATTEMPTS), MAX_LOCKOUT_MS);
+      lockedUntil = Date.now() + lockoutMs;
+    }
+
+    this.saveLoginAttemptState(email, { count, lockedUntil });
+  }
+
+  private resetLoginAttempts(email: string): void {
+    localStorage.removeItem(LOGIN_ATTEMPTS_PREFIX + email.trim().toLowerCase());
   }
 
   async register(name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> {

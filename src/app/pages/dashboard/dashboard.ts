@@ -172,16 +172,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     return sorted;
   });
 
-  readonly isAdministrative = computed(() => {
-    const user = this.auth.user();
-    if (!user || !user.email) return false;
-    
-    // Hardcoded owner check for absolute safety
-    if (user.email.toLowerCase() === 'klhetvintellez23@gmail.com') return true;
-
-    const adminUser = this.adminData.users().find(u => u.email.toLowerCase() === user.email.toLowerCase());
-    return adminUser ? ['Moderator', 'Admin', 'SuperAdmin'].includes(adminUser.role) : false;
-  });
+  readonly isAdministrative = computed(() => this.adminData.isCurrentUserAdmin());
 
   constructor(
     public auth: AuthService,

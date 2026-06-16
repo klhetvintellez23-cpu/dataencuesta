@@ -417,6 +417,87 @@
   color: #dc2626;
 }
 
+/* --- #3 Topbar save status chip --- */
+.topbar-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.25s, color 0.25s;
+  white-space: nowrap;
+}
+.topbar-save-status[data-state="saving"] {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.topbar-save-status[data-state="unsaved"] {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.topbar-save-status[data-state="saved"] {
+  background: #f0fdf4;
+  color: #15803d;
+}
+.topbar-save-status[data-state="idle"] {
+  background: transparent;
+  color: #94a3b8;
+}
+.save-status-icon {
+  font-size: 14px;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+/* --- #2 Undo delete toast --- */
+.editor-toast-undo {
+  background: #1e293b;
+  color: #f1f5f9;
+  border-color: #334155;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.editor-toast-undo .material-symbols-outlined {
+  color: #94a3b8;
+  font-size: 18px;
+}
+.toast-undo-btn {
+  background: #440789;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.toast-undo-btn:hover {
+  background: #6d28d9;
+}
+
+/* --- #1 Settings auto-save note --- */
+.settings-autosave-note {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.settings-autosave-note .material-symbols-outlined {
+  color: #16a34a;
+}
+
 [contenteditable="true"] {
   outline: none;
   border-radius: 4px;
@@ -7452,4 +7533,172 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.7); }
 }
+
+/* =========================================================================
+   Feature: Sidebar Question Search
+   ========================================================================= */
+
+.sidebar-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 10px 12px 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0 8px;
+  transition: border-color 0.15s;
+}
+.sidebar-search-wrap:focus-within {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12);
+}
+.sidebar-search-icon {
+  font-size: 16px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.sidebar-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: #1e293b;
+  padding: 7px 6px;
+}
+.sidebar-search-input::placeholder { color: #94a3b8; }
+.sidebar-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: #94a3b8;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.sidebar-search-clear:hover { color: #ef4444; background: #fef2f2; }
+.sidebar-search-clear .material-symbols-outlined { font-size: 16px; }
+
+.sidebar-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+.sidebar-search-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+  width: 100%;
+}
+.sidebar-search-item:hover {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+}
+.sidebar-search-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c3aed;
+  background: #ede9fe;
+  border-radius: 5px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.sidebar-search-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sidebar-search-text {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-search-page {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.sidebar-search-empty {
+  padding: 20px 12px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+/* =========================================================================
+   Feature: Option Drag-and-Drop Handle
+   ========================================================================= */
+
+.option-drag-handle {
+  font-size: 18px;
+  color: #cbd5e1;
+  cursor: grab;
+  flex-shrink: 0;
+  transition: color 0.15s;
+  user-select: none;
+}
+.option-drag-handle:active { cursor: grabbing; }
+.question-pro-option:hover .option-drag-handle { color: #94a3b8; }
+.question-pro-option.option-drag-over {
+  background: #f5f3ff;
+  border-color: #7c3aed;
+  opacity: 0.75;
+}
+
+/* =========================================================================
+   Feature: Preview Test Mode Badge & Restart Button
+   ========================================================================= */
+
+.preview-test-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+.preview-test-badge .material-symbols-outlined {
+  font-size: 15px;
+}
+.preview-restart-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #7c3aed;
+  background: #f5f3ff;
+  border: 1px solid #c4b5fd;
+  border-radius: 20px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.preview-restart-btn:hover {
+  background: #ede9fe;
+  border-color: #7c3aed;
+}
+.preview-restart-btn .material-symbols-outlined { font-size: 17px; }
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink, RouterOutlet, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../../services/auth.service';
@@ -11,7 +11,7 @@ import { AdminDataService, type AdminUser } from '../../../../services/admin-dat
   templateUrl: './admin-layout.html',
   styleUrl: './admin-layout.css'
 })
-export class AdminLayoutComponent {
+export class AdminLayoutComponent implements OnInit {
   public readonly auth = inject(AuthService);
   private readonly adminDataService = inject(AdminDataService);
   public readonly router = inject(Router);
@@ -24,6 +24,13 @@ export class AdminLayoutComponent {
       u => u.email.toLowerCase() === user.email.toLowerCase()
     ) || null;
   });
+
+  ngOnInit(): void {
+    // Carga el listado de usuarios/encuestas y la auditoría real para
+    // todas las vistas del panel /admin (protegido por adminGuard + RLS).
+    void this.adminDataService.loadRealData();
+    void this.adminDataService.loadAuditLogs();
+  }
 
   readonly isDarkMode = signal<boolean>(
     document.documentElement.classList.contains('dark') || 

@@ -71,7 +71,7 @@ export class AdminUserProfileComponent {
     this.activeModal.set('role');
   }
 
-  confirmRoleChange(): void {
+  async confirmRoleChange(): Promise<void> {
     const admin = this.loggedInAdmin();
     const target = this.userProfile();
     if (!admin || !target) return;
@@ -88,24 +88,20 @@ export class AdminUserProfileComponent {
       return;
     }
 
-    this.adminData.changeUserRole(
-      { name: admin.name, email: admin.email, role: admin.role },
-      target.id,
-      this.selectedNewRole()
-    );
+    const result = await this.adminData.changeUserRole(target.id, this.selectedNewRole());
+    if (!result.success) {
+      this.permissionError.set(result.error || 'No se pudo cambiar el rol.');
+      return;
+    }
     this.closeModal();
   }
 
   // Active status triggers
-  triggerActivate(): void {
-    const admin = this.loggedInAdmin();
+  async triggerActivate(): Promise<void> {
     const target = this.userProfile();
-    if (!admin || !target) return;
+    if (!target) return;
 
-    this.adminData.activateUser(
-      { name: admin.name, email: admin.email, role: admin.role },
-      target.id
-    );
+    await this.adminData.activateUser(target.id);
   }
 
   triggerSuspend(): void {
@@ -113,19 +109,18 @@ export class AdminUserProfileComponent {
     this.activeModal.set('suspend');
   }
 
-  confirmSuspend(): void {
+  async confirmSuspend(): Promise<void> {
     const reason = this.suspensionReason().trim();
     if (!reason) return;
 
-    const admin = this.loggedInAdmin();
     const target = this.userProfile();
-    if (!admin || !target) return;
+    if (!target) return;
 
-    this.adminData.suspendUser(
-      { name: admin.name, email: admin.email, role: admin.role },
-      target.id,
-      reason
-    );
+    const result = await this.adminData.suspendUser(target.id, reason);
+    if (!result.success) {
+      this.permissionError.set(result.error || 'No se pudo suspender la cuenta.');
+      return;
+    }
     this.closeModal();
   }
 
@@ -134,42 +129,31 @@ export class AdminUserProfileComponent {
     this.activeModal.set('block');
   }
 
-  confirmBlock(): void {
+  async confirmBlock(): Promise<void> {
     const reason = this.blockReason().trim();
     if (!reason) return;
 
-    const admin = this.loggedInAdmin();
     const target = this.userProfile();
-    if (!admin || !target) return;
+    if (!target) return;
 
-    this.adminData.blockUser(
-      { name: admin.name, email: admin.email, role: admin.role },
-      target.id,
-      reason
-    );
+    const result = await this.adminData.blockUser(target.id, reason);
+    if (!result.success) {
+      this.permissionError.set(result.error || 'No se pudo bloquear la cuenta.');
+      return;
+    }
     this.closeModal();
   }
 
-  triggerUnblock(): void {
-    const admin = this.loggedInAdmin();
+  async triggerUnblock(): Promise<void> {
     const target = this.userProfile();
-    if (!admin || !target) return;
+    if (!target) return;
 
-    this.adminData.unblockUser(
-      { name: admin.name, email: admin.email, role: admin.role },
-      target.id
-    );
+    await this.adminData.unblockUser(target.id);
   }
 
   // Survey controls
-  triggerArchiveSurvey(surveyId: string): void {
-    const admin = this.loggedInAdmin();
-    if (!admin) return;
-
-    this.adminData.archiveSurvey(
-      { name: admin.name, email: admin.email, role: admin.role },
-      surveyId
-    );
+  async triggerArchiveSurvey(surveyId: string): Promise<void> {
+    await this.adminData.archiveSurvey(surveyId);
   }
 
   triggerUnpublishSurvey(surveyId: string): void {
@@ -178,30 +162,21 @@ export class AdminUserProfileComponent {
     this.activeModal.set('survey_unpublish');
   }
 
-  confirmUnpublishSurvey(): void {
+  async confirmUnpublishSurvey(): Promise<void> {
     const reason = this.unpublishReason().trim();
     const surveyId = this.targetSurveyId();
     if (!reason || !surveyId) return;
 
-    const admin = this.loggedInAdmin();
-    if (!admin) return;
-
-    this.adminData.unpublishSurvey(
-      { name: admin.name, email: admin.email, role: admin.role },
-      surveyId,
-      reason
-    );
+    const result = await this.adminData.unpublishSurvey(surveyId, reason);
+    if (!result.success) {
+      this.permissionError.set(result.error || 'No se pudo despublicar la encuesta.');
+      return;
+    }
     this.closeModal();
   }
 
-  triggerRestoreSurvey(surveyId: string): void {
-    const admin = this.loggedInAdmin();
-    if (!admin) return;
-
-    this.adminData.restoreSurvey(
-      { name: admin.name, email: admin.email, role: admin.role },
-      surveyId
-    );
+  async triggerRestoreSurvey(surveyId: string): Promise<void> {
+    await this.adminData.restoreSurvey(surveyId);
   }
 
   closeModal(): void {

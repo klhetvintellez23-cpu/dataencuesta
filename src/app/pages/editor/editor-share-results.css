@@ -3831,7 +3831,8 @@ input:checked + .slider:before {
 
 .settings-modal-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
   padding: 16px 24px;
   border-top: 1px solid #f1f5f9;

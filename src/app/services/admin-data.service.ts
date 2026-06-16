@@ -1,8 +1,11 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, inject, effect } from '@angular/core';
 import { SupabaseService } from './supabase.service';
+import { AuthService } from './auth.service';
 
 export type UserStatus = 'activo' | 'suspendido' | 'bloqueado';
 export type UserRole = 'User' | 'Moderator' | 'Admin' | 'SuperAdmin';
+
+const ADMIN_ROLES: UserRole[] = ['Moderator', 'Admin', 'SuperAdmin'];
 
 export interface AdminUser {
   id: string;
@@ -38,39 +41,89 @@ export interface AdminAuditLog {
   target: string;
   details: string;
   ip: string;
-  location: string;
+}
+
+export interface AdminActionResult {
+  success: boolean;
+  error?: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
   private readonly supabaseService = inject(SupabaseService);
+  private readonly authService = inject(AuthService);
 
-  // Dynamic signals holding the real loaded data
   readonly users = signal<AdminUser[]>([]);
   readonly surveys = signal<AdminSurvey[]>([]);
   readonly auditLogs = signal<AdminAuditLog[]>([]);
 
+  // Rol/estado del usuario actualmente autenticado, resueltos contra
+  // la columna real `perfiles.rol` / `perfiles.estado` (protegida por RLS
+  // y por el trigger que impide auto-asignarse un rol).
+  readonly currentUserRole = signal<UserRole>('User');
+  readonly currentUserStatus = signal<UserStatus>('activo');
+
+  readonly isCurrentUserAdmin = computed(() =>
+    ADMIN_ROLES.includes(this.currentUserRole()) && this.currentUserStatus() === 'activo'
+  );
+
   constructor() {
-    // 1. Initialize Audit Logs from LocalStorage
-    this.auditLogs.set(this.loadAuditLogs());
-    // 2. Query production data from Supabase
-    void this.loadRealData();
+    effect(() => {
+      const user = this.authService.user();
+      if (user) {
+        void this.refreshCurrentUserRole(user.id);
+      } else {
+        this.currentUserRole.set('User');
+        this.currentUserStatus.set('activo');
+        this.users.set([]);
+        this.surveys.set([]);
+        this.auditLogs.set([]);
+      }
+    });
   }
 
-  // Load real production data from Supabase tables
+  // Refresca rol/estado del usuario actual desde `perfiles`. Devuelve
+  // si es administrador activo. Pensado para usarse en guards, donde
+  // no se puede depender del timing del effect del constructor.
+  async checkIsAdmin(userId: string): Promise<boolean> {
+    await this.refreshCurrentUserRole(userId);
+    return this.isCurrentUserAdmin();
+  }
+
+  private async refreshCurrentUserRole(userId: string): Promise<void> {
+    const supabase = this.supabaseService.client;
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from('perfiles')
+      .select('rol, estado')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) {
+      this.currentUserRole.set('User');
+      this.currentUserStatus.set('activo');
+      return;
+    }
+
+    this.currentUserRole.set((data['rol'] as UserRole) || 'User');
+    this.currentUserStatus.set((data['estado'] as UserStatus) || 'activo');
+  }
+
+  // Carga el listado completo de usuarios y encuestas. RLS garantiza
+  // que solo un administrador activo recibe filas de otros usuarios;
+  // para el resto, Supabase solo devolverá su propio perfil/encuestas.
   async loadRealData(): Promise<void> {
     const supabase = this.supabaseService.client;
     if (!supabase) return;
 
     try {
-      // 1. Fetch real user profiles from the 'perfiles' table
       const { data: perfiles, error: errProfiles } = await supabase
         .from('perfiles')
-        .select('id, nombre_completo, email, url_avatar, creado_el');
+        .select('id, nombre_completo, email, url_avatar, creado_el, rol, estado');
 
       if (errProfiles) throw errProfiles;
 
-      // 2. Fetch real surveys from the 'encuestas' table with submission response counts
       const { data: encuestas, error: errSurveys } = await supabase
         .from('encuestas')
         .select(`
@@ -79,6 +132,7 @@ export class AdminDataService {
           titulo,
           descripcion,
           estado,
+          moderacion_estado,
           creado_el,
           actualizado_el,
           envios (count)
@@ -86,91 +140,125 @@ export class AdminDataService {
 
       if (errSurveys) throw errSurveys;
 
-      // 3. Retrieve administrative moderation overrides from localStorage
-      const rolesOverrides = JSON.parse(localStorage.getItem('admin_roles_overrides') || '{}');
-      const statusesOverrides = JSON.parse(localStorage.getItem('admin_statuses_overrides') || '{}');
-      const surveysOverrides = JSON.parse(localStorage.getItem('admin_surveys_overrides') || '{}');
-
-      // 4. Map to AdminSurvey structure
       const resolvedSurveys: AdminSurvey[] = (encuestas || []).map((s: any) => {
         const owner = (perfiles || []).find((p: any) => p.id === s.usuario_id);
-        const rawStatus = s.estado === 'cerrado' ? 'despublicado' : s.estado;
-        const status = surveysOverrides[s.id] || rawStatus || 'activo';
-        
+
         return {
           id: s.id,
           title: s.titulo || 'Encuesta sin título',
           ownerId: s.usuario_id,
           ownerName: owner?.nombre_completo || 'Usuario Desconocido',
-          ownerEmail: owner?.email || 'desconocido@client.com',
+          ownerEmail: owner?.email || 'desconocido@cliente.com',
           createdAt: s.creado_el,
-          status: status,
+          status: (s.moderacion_estado as AdminSurvey['status']) || 'activo',
           responsesCount: s.envios?.[0]?.count || 0
         };
       });
 
-      // 5. Map to AdminUser structure
       const resolvedUsers: AdminUser[] = (perfiles || []).map((p: any) => {
-        const userSurveys = resolvedSurveys.filter(s => s.ownerId === p.id);
+        const userSurveys = resolvedSurveys.filter((s) => s.ownerId === p.id);
         const surveysCount = userSurveys.length;
         const responsesCount = userSurveys.reduce((sum, s) => sum + s.responsesCount, 0);
-
         const email = p.email || '';
-        // Security role resolution: klhetvintellez23@gmail.com is SuperAdmin by default
-        const defaultRole = email.toLowerCase() === 'klhetvintellez23@gmail.com' ? 'SuperAdmin' : 'User';
-        const role = rolesOverrides[p.id] || defaultRole;
-        const status = statusesOverrides[p.id] || 'activo';
 
         return {
           id: p.id,
           name: p.nombre_completo || email.split('@')[0] || 'Usuario',
-          email: email,
+          email,
           createdAt: p.creado_el,
-          lastLoginAt: p.creado_el, // Fallback to registration date
-          status: status,
-          role: role,
+          lastLoginAt: p.creado_el,
+          status: (p.estado as UserStatus) || 'activo',
+          role: (p.rol as UserRole) || 'User',
           avatarUrl: p.url_avatar || undefined,
           surveysCount,
           responsesCount
         };
       });
 
-      // 6. Update signals
       this.surveys.set(resolvedSurveys);
       this.users.set(resolvedUsers);
-
     } catch (e) {
       console.error('Error loading real production data in AdminDataService:', e);
     }
   }
 
-  // Load audit logs from localStorage or initialize with initial seed
-  private loadAuditLogs(): AdminAuditLog[] {
-    try {
-      const stored = localStorage.getItem('admin_audit_logs');
-      if (stored) {
-        return JSON.parse(stored) as AdminAuditLog[];
-      }
-    } catch (e) {
-      console.error('Error loading audit logs:', e);
+  // Carga la auditoría real desde `admin_audit_logs` (escrita solo por
+  // las RPCs SECURITY DEFINER, no manipulable desde el cliente).
+  async loadAuditLogs(): Promise<void> {
+    const supabase = this.supabaseService.client;
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from('admin_audit_logs')
+      .select('id, creado_el, admin_nombre, admin_email, admin_rol, accion, objetivo, detalles, ip')
+      .order('creado_el', { ascending: false })
+      .limit(200);
+
+    if (error) {
+      console.error('Error loading audit logs:', error);
+      return;
     }
 
-    const seedLogs: AdminAuditLog[] = [
-      {
-        id: 'log_init',
-        timestamp: new Date().toISOString(),
-        adminName: 'Sistema de Seguridad',
-        adminEmail: 'security@dataencuesta.com',
-        adminRole: 'SuperAdmin',
-        action: 'USER_ACTIVATION',
-        target: 'Consola Administrativa',
-        details: 'Se inicializó con éxito la Consola de Administración conectada a la base de datos de Producción.',
-        ip: '127.0.0.1',
-        location: 'Sistema Central'
-      }
-    ];
-    localStorage.setItem('admin_audit_logs', JSON.stringify(seedLogs));
-    return seedLogs;
+    this.auditLogs.set((data || []).map((log: any) => ({
+      id: log.id,
+      timestamp: log.creado_el,
+      adminName: log.admin_nombre,
+      adminEmail: log.admin_email,
+      adminRole: log.admin_rol as UserRole,
+      action: log.accion as AdminAuditLog['action'],
+      target: log.objetivo,
+      details: log.detalles,
+      ip: log.ip || 'desconocida'
+    })));
+  }
+
+  // 3. Admin Core Actions — todas pasan por RPCs SECURITY DEFINER que
+  //    verifican el rol del llamador en el servidor y registran la
+  //    auditoría. Tras cada acción se recargan datos y logs.
+  private async callAdminRpc(fn: string, params: Record<string, unknown>): Promise<AdminActionResult> {
+    const supabase = this.supabaseService.client;
+    if (!supabase) return { success: false, error: 'Falta configurar Supabase en public/env.js.' };
+
+    const { error } = await supabase.rpc(fn, params);
+    if (error) {
+      console.error(`Error en RPC ${fn}:`, error);
+      return { success: false, error: error.message };
+    }
+
+    await Promise.all([this.loadRealData(), this.loadAuditLogs()]);
+    return { success: true };
+  }
+
+  changeUserRole(userId: string, newRole: UserRole): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_user_role', { p_user_id: userId, p_new_role: newRole });
+  }
+
+  suspendUser(userId: string, reason: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_user_status', { p_user_id: userId, p_new_status: 'suspendido', p_reason: reason });
+  }
+
+  activateUser(userId: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_user_status', { p_user_id: userId, p_new_status: 'activo', p_reason: null });
+  }
+
+  blockUser(userId: string, reason: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_user_status', { p_user_id: userId, p_new_status: 'bloqueado', p_reason: reason });
+  }
+
+  unblockUser(userId: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_user_status', { p_user_id: userId, p_new_status: 'activo', p_reason: null });
+  }
+
+  archiveSurvey(surveyId: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_survey_moderation', { p_survey_id: surveyId, p_new_status: 'archivado', p_reason: null });
+  }
+
+  unpublishSurvey(surveyId: string, reason: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_survey_moderation', { p_survey_id: surveyId, p_new_status: 'despublicado', p_reason: reason });
+  }
+
+  restoreSurvey(surveyId: string): Promise<AdminActionResult> {
+    return this.callAdminRpc('admin_set_survey_moderation', { p_survey_id: surveyId, p_new_status: 'activo', p_reason: null });
   }
 
   // 2. Metrics (Computed Signals for Admin Dashboard Widget Metrics)
@@ -178,7 +266,7 @@ export class AdminDataService {
   readonly activeUsersCount = computed(() => this.users().filter(u => u.status === 'activo').length);
   readonly suspendedUsersCount = computed(() => this.users().filter(u => u.status === 'suspendido').length);
   readonly blockedUsersCount = computed(() => this.users().filter(u => u.status === 'bloqueado').length);
-  
+
   readonly totalSurveysCount = computed(() => this.surveys().length);
   readonly activeSurveysCount = computed(() => this.surveys().filter(s => s.status === 'activo').length);
   readonly archivedSurveysCount = computed(() => this.surveys().filter(s => s.status === 'archivado').length);
@@ -187,190 +275,4 @@ export class AdminDataService {
   readonly totalResponsesCount = computed(() => {
     return this.surveys().reduce((sum, s) => sum + s.responsesCount, 0);
   });
-
-  // 3. Admin Core Actions
-  logAction(
-    admin: { name: string; email: string; role: UserRole },
-    action: AdminAuditLog['action'],
-    target: string,
-    details: string
-  ): void {
-    const newLog: AdminAuditLog = {
-      id: `log_${Math.random().toString(36).substring(2, 9)}`,
-      timestamp: new Date().toISOString(),
-      adminName: admin.name,
-      adminEmail: admin.email,
-      adminRole: admin.role,
-      action,
-      target,
-      details,
-      ip: '192.168.1.102',
-      location: 'Madrid, ES'
-    };
-    
-    this.auditLogs.update(logs => {
-      const next = [newLog, ...logs];
-      localStorage.setItem('admin_audit_logs', JSON.stringify(next));
-      return next;
-    });
-  }
-
-  // Users Management Actions
-  changeUserRole(
-    admin: { name: string; email: string; role: UserRole },
-    userId: string,
-    newRole: UserRole
-  ): void {
-    this.users.update(list => list.map(u => {
-      if (u.id === userId) {
-        const details = `Rol modificado de '${u.role}' a '${newRole}'.`;
-        this.logAction(admin, 'ROLE_CHANGE', `${u.name} (${u.id})`, details);
-
-        // Save role override in localStorage
-        const rolesOverrides = JSON.parse(localStorage.getItem('admin_roles_overrides') || '{}');
-        rolesOverrides[userId] = newRole;
-        localStorage.setItem('admin_roles_overrides', JSON.stringify(rolesOverrides));
-
-        return { ...u, role: newRole };
-      }
-      return u;
-    }));
-  }
-
-  suspendUser(
-    admin: { name: string; email: string; role: UserRole },
-    userId: string,
-    reason: string
-  ): void {
-    this.users.update(list => list.map(u => {
-      if (u.id === userId) {
-        this.logAction(admin, 'USER_SUSPENSION', `${u.name} (${u.id})`, `Usuario suspendido. Motivo: ${reason}`);
-
-        // Save status override in localStorage
-        const statusesOverrides = JSON.parse(localStorage.getItem('admin_statuses_overrides') || '{}');
-        statusesOverrides[userId] = 'suspendido';
-        localStorage.setItem('admin_statuses_overrides', JSON.stringify(statusesOverrides));
-
-        return { ...u, status: 'suspendido' };
-      }
-      return u;
-    }));
-  }
-
-  activateUser(
-    admin: { name: string; email: string; role: UserRole },
-    userId: string
-  ): void {
-    this.users.update(list => list.map(u => {
-      if (u.id === userId) {
-        this.logAction(admin, 'USER_ACTIVATION', `${u.name} (${u.id})`, 'Cuenta reactivada a estado activo.');
-
-        // Save status override in localStorage
-        const statusesOverrides = JSON.parse(localStorage.getItem('admin_statuses_overrides') || '{}');
-        statusesOverrides[userId] = 'activo';
-        localStorage.setItem('admin_statuses_overrides', JSON.stringify(statusesOverrides));
-
-        return { ...u, status: 'activo' };
-      }
-      return u;
-    }));
-  }
-
-  blockUser(
-    admin: { name: string; email: string; role: UserRole },
-    userId: string,
-    reason: string
-  ): void {
-    this.users.update(list => list.map(u => {
-      if (u.id === userId) {
-        this.logAction(admin, 'USER_BLOCK', `${u.name} (${u.id})`, `Cuenta bloqueada permanentemente. Motivo: ${reason}`);
-
-        // Save status override in localStorage
-        const statusesOverrides = JSON.parse(localStorage.getItem('admin_statuses_overrides') || '{}');
-        statusesOverrides[userId] = 'bloqueado';
-        localStorage.setItem('admin_statuses_overrides', JSON.stringify(statusesOverrides));
-
-        return { ...u, status: 'bloqueado' };
-      }
-      return u;
-    }));
-  }
-
-  unblockUser(
-    admin: { name: string; email: string; role: UserRole },
-    userId: string
-  ): void {
-    this.users.update(list => list.map(u => {
-      if (u.id === userId) {
-        this.logAction(admin, 'USER_UNBLOCK', `${u.name} (${u.id})`, 'Cuenta desbloqueada. Estado devuelto a activo.');
-
-        // Save status override in localStorage
-        const statusesOverrides = JSON.parse(localStorage.getItem('admin_statuses_overrides') || '{}');
-        statusesOverrides[userId] = 'activo';
-        localStorage.setItem('admin_statuses_overrides', JSON.stringify(statusesOverrides));
-
-        return { ...u, status: 'activo' };
-      }
-      return u;
-    }));
-  }
-
-  // Survey Management Actions
-  archiveSurvey(
-    admin: { name: string; email: string; role: UserRole },
-    surveyId: string
-  ): void {
-    this.surveys.update(list => list.map(s => {
-      if (s.id === surveyId) {
-        this.logAction(admin, 'SURVEY_ARCHIVE', `Encuesta: ${s.title} (${s.id})`, 'Encuesta archivada por decisión administrativa.');
-
-        // Save survey override in localStorage
-        const surveysOverrides = JSON.parse(localStorage.getItem('admin_surveys_overrides') || '{}');
-        surveysOverrides[surveyId] = 'archivado';
-        localStorage.setItem('admin_surveys_overrides', JSON.stringify(surveysOverrides));
-
-        return { ...s, status: 'archivado' };
-      }
-      return s;
-    }));
-  }
-
-  unpublishSurvey(
-    admin: { name: string; email: string; role: UserRole },
-    surveyId: string,
-    reason: string
-  ): void {
-    this.surveys.update(list => list.map(s => {
-      if (s.id === surveyId) {
-        this.logAction(admin, 'SURVEY_UNPUBLISH', `Encuesta: ${s.title} (${s.id})`, `Encuesta despublicada. Motivo: ${reason}`);
-
-        // Save survey override in localStorage
-        const surveysOverrides = JSON.parse(localStorage.getItem('admin_surveys_overrides') || '{}');
-        surveysOverrides[surveyId] = 'despublicado';
-        localStorage.setItem('admin_surveys_overrides', JSON.stringify(surveysOverrides));
-
-        return { ...s, status: 'despublicado' };
-      }
-      return s;
-    }));
-  }
-
-  restoreSurvey(
-    admin: { name: string; email: string; role: UserRole },
-    surveyId: string
-  ): void {
-    this.surveys.update(list => list.map(s => {
-      if (s.id === surveyId) {
-        this.logAction(admin, 'SURVEY_RESTORE', `Encuesta: ${s.title} (${s.id})`, 'Encuesta restaurada a estado activo.');
-
-        // Save survey override in localStorage
-        const surveysOverrides = JSON.parse(localStorage.getItem('admin_surveys_overrides') || '{}');
-        surveysOverrides[surveyId] = 'activo';
-        localStorage.setItem('admin_surveys_overrides', JSON.stringify(surveysOverrides));
-
-        return { ...s, status: 'activo' };
-      }
-      return s;
-    }));
-  }
 }
