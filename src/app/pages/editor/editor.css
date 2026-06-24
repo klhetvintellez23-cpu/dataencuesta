@@ -6122,7 +6122,7 @@
   }
 
   .question-pro-option {
-    grid-template-columns: minmax(0, 1fr) 38px;
+    grid-template-columns: 20px minmax(0, 1fr) 38px;
   }
 
   .question-pro-actions,

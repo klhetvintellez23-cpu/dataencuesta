@@ -2391,7 +2391,7 @@ export class EditorPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.saveSubject.pipe(debounceTime(350)).subscribe(() => {
+    this.saveSubject.pipe(debounceTime(1500)).subscribe(() => {
       void this.executeSave();
     });
 
@@ -2426,7 +2426,7 @@ export class EditorPage implements OnInit, OnDestroy {
 
     this.realtimeChannel = client.channel(`editor-responses-${surveyId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'envios', filter: `encuesta_id=eq.${surveyId}` }, () => {
-        void this.loadExistingSurvey(surveyId);
+        this.survey.update(s => s ? { ...s, responses_count: (s.responses_count ?? 0) + 1 } : s);
       })
       .subscribe();
   }

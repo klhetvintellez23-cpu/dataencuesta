@@ -2522,7 +2522,7 @@
 .question-pro-option {
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: 20px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 8px;
   border: 1px solid #e7e0ec;
@@ -4860,7 +4860,7 @@
 .question-pro-editor.modal-mode .question-pro-option {
   min-height: 50px !important;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 34px !important;
+  grid-template-columns: 20px minmax(0, 1fr) 34px !important;
   align-items: center !important;
   gap: 8px !important;
   margin-bottom: 12px !important;

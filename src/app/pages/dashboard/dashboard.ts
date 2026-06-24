@@ -200,8 +200,12 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (!client) return;
 
     this.realtimeChannel = client.channel('dashboard-responses')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'envios' }, () => {
-        void this.loadSurveys();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'envios' }, (payload) => {
+        const surveyId = (payload.new as any)?.encuesta_id;
+        if (!surveyId) return;
+        this.surveys.update(list =>
+          list.map(s => s.id === surveyId ? { ...s, responses_count: (s.responses_count ?? 0) + 1 } : s)
+        );
       })
       .subscribe();
   }

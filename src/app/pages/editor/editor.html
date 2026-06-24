@@ -59,18 +59,6 @@
           <h2>Páginas</h2>
           <span>{{ getSurveyPageCount() }}</span>
         </div>
-        <!-- Sidebar search -->
-        <div class="sidebar-search-wrap">
-          <span class="material-symbols-outlined sidebar-search-icon">search</span>
-          <input class="sidebar-search-input" type="text" placeholder="Buscar pregunta…"
-            [ngModel]="sidebarSearch()" (ngModelChange)="sidebarSearch.set($event)" />
-          @if (sidebarSearch()) {
-          <button class="sidebar-search-clear" type="button" (click)="sidebarSearch.set('')"
-            title="Limpiar búsqueda">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-          }
-        </div>
         <button type="button" (click)="showTemplateModal = true"
           style="display: flex; align-items: center; gap: 4px; background: transparent; border: none; color: #64748b; font-size: 10px; font-weight: 700; cursor: pointer; padding: 0; text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.2s;"
           onmouseover="this.style.color='#440789'" onmouseout="this.style.color='#64748b'">
@@ -79,21 +67,6 @@
         </button>
       </div>
 
-      <!-- Search results -->
-      @if (sidebarSearchResults(); as results) {
-      <ul class="structure-list sidebar-search-results">
-        @if (results.length === 0) {
-        <li class="sidebar-search-empty">Sin resultados para "{{ sidebarSearch() }}"</li>
-        }
-        @for (r of results; track r.questionIndex) {
-        <li class="structure-item sidebar-search-item" (click)="jumpToSearchResult(r.questionIndex, r.pageIndex)">
-          <span class="sidebar-search-num">{{ r.questionIndex + 1 }}</span>
-          <span class="sidebar-search-text">{{ r.text }}</span>
-          <span class="sidebar-search-page">Pág. {{ r.pageIndex + 1 }}</span>
-        </li>
-        }
-      </ul>
-      } @else {
       <ul class="structure-list builder-page-list">
         <li class="structure-item builder-page-item" [class.active]="activeSection() === 'welcome'"
           (click)="activeSection.set('welcome')">
@@ -169,7 +142,6 @@
           </div>
         </li>
       </ul>
-      } <!-- end @else search results -->
     </aside>
 
     <main class="editor-canvas">
@@ -568,10 +540,6 @@
     </section>
 
     <div class="preview-floating-controls" aria-label="Controles de vista previa">
-      <span class="preview-test-badge">
-        <span class="material-symbols-outlined">science</span>
-        Modo de prueba — las respuestas no se guardan
-      </span>
       <div class="public-preview-segment">
         <button type="button" [class.active]="previewDevice !== 'mobile'" (click)="setPreviewDevice('desktop')"
           title="Vista de computadora">
@@ -584,10 +552,6 @@
           Teléfono
         </button>
       </div>
-      <button class="preview-restart-btn" type="button" (click)="restartPreview()" title="Volver al inicio">
-        <span class="material-symbols-outlined">restart_alt</span>
-        Reiniciar
-      </button>
     </div>
   </div>
   }
@@ -1602,7 +1566,7 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
             placeholder="Respuesta..." />
           <button type="button" title="Eliminar respuesta" (click)="removeOption(editingQuestionIndex, oi)"
             [disabled]="q.options.length <= 2">
-            <span class="material-symbols-outlined">more_horiz</span>
+            <span class="material-symbols-outlined">delete</span>
           </button>
         </div>
         }
