@@ -15,13 +15,13 @@
       }
     </div>
     <div class="editor-topbar-tabs builder-stepper">
-      <button class="editor-tab" [class.active]="currentTab === 'design'"
+      <button class="editor-tab" [class.active]="currentTab() === 'design'"
         (click)="setCurrentTab('design')"><span>1</span> Crear</button>
-      <button class="editor-tab" [class.active]="currentTab === 'preview'"
+      <button class="editor-tab" [class.active]="currentTab() === 'preview'"
         (click)="setCurrentTab('preview')"><span>2</span> Vista previa</button>
-      <button class="editor-tab" [class.active]="currentTab === 'collect'"
+      <button class="editor-tab" [class.active]="currentTab() === 'collect'"
         (click)="setCurrentTab('collect')"><span>3</span> Compartir</button>
-      <button class="editor-tab" [class.active]="currentTab === 'analyze'"
+      <button class="editor-tab" [class.active]="currentTab() === 'analyze'"
         (click)="setCurrentTab('analyze')"><span>4</span> Resultados y análisis</button>
     </div>
     <div class="editor-topbar-right">
@@ -36,12 +36,14 @@
           <span class="material-symbols-outlined">save</span>
         </button>
       </div>
-      <div class="topbar-save-status" [attr.data-state]="saveStatusLabel().state" title="Estado del guardado">
+      <button type="button" class="topbar-save-status" [class.is-clickable]="saveFailed()"
+        [attr.data-state]="saveStatusLabel().state" [disabled]="!saveFailed()"
+        (click)="saveNow()" [title]="saveStatusLabel().text">
         <span class="material-symbols-outlined save-status-icon" [class.spinning]="saveStatusLabel().state === 'saving'">
           {{ saveStatusLabel().icon }}
         </span>
         <span class="save-status-text">{{ saveStatusLabel().text }}</span>
-      </div>
+      </button>
       <div class="topbar-divider"></div>
       <button class="btn-actualizar" type="button" (click)="publish()" [disabled]="isSaving()">
         {{ survey()?.status === 'borrador' ? 'Publicar' : 'Actualizar' }}
@@ -50,7 +52,7 @@
   </nav>
 
   @if (survey(); as s) {
-  @if (currentTab === 'design') {
+  @if (currentTab() === 'design') {
   <div class="editor-body" [style.--sidebar-right-width.px]="effectiveRightSidebarWidth()">
     <aside class="editor-sidebar-left builder-pages-sidebar">
       <div class="builder-sidebar-heading"
@@ -184,6 +186,68 @@
               </app-survey-simulator>
             </div>
           </div>
+        </div>
+
+        <div class="mobile-canvas-fallback">
+          <div class="mobile-canvas-notice">
+            <span class="material-symbols-outlined">desktop_windows</span>
+            <p>El diseño visual (colores, imágenes, posición de elementos) se edita mejor desde una computadora. Desde aquí puedes seguir editando el contenido.</p>
+          </div>
+
+          @if (activeSection() === 'welcome') {
+          <div class="mobile-canvas-form">
+            <label class="mobile-canvas-field">
+              <span>Título de bienvenida</span>
+              <input type="text" [ngModel]="s.title" (ngModelChange)="updateTitle($event)"
+                placeholder="Título de la encuesta" />
+            </label>
+            <label class="mobile-canvas-field">
+              <span>Descripción</span>
+              <textarea [ngModel]="s.description" (ngModelChange)="updateDescription($event)" rows="3"
+                placeholder="Descripción de bienvenida"></textarea>
+            </label>
+          </div>
+          } @else if (activeSection() === 'end') {
+          <div class="mobile-canvas-form">
+            <label class="mobile-canvas-field">
+              <span>Título de finalización</span>
+              <input type="text" [ngModel]="s.metadata?.endTitle" (ngModelChange)="updateEndTitle($event)"
+                placeholder="¡Gracias!" />
+            </label>
+            <label class="mobile-canvas-field">
+              <span>Mensaje de finalización</span>
+              <textarea [ngModel]="s.metadata?.endDescription" (ngModelChange)="updateEndDescription($event)"
+                rows="3" placeholder="Mensaje de agradecimiento"></textarea>
+            </label>
+          </div>
+          } @else {
+          <ul class="mobile-question-list">
+            @for (question of currentPageQuestionsForMobile(); track question.id; let qi = $index) {
+            <li class="mobile-question-item">
+              <div class="mobile-question-item-text">
+                <strong>{{ question.text || 'Pregunta sin enunciado' }}</strong>
+                <small>{{ questionTypeLabel(question.type) }}</small>
+              </div>
+              <div class="mobile-question-item-actions">
+                <button type="button"
+                  (click)="openQuestionEditor(questionPageSummaries()[activeQuestionPageIndex()].start + qi)"
+                  title="Editar"><span class="material-symbols-outlined">edit</span></button>
+                <button type="button"
+                  (click)="duplicateQuestion(questionPageSummaries()[activeQuestionPageIndex()].start + qi)"
+                  title="Duplicar"><span class="material-symbols-outlined">content_copy</span></button>
+                <button type="button" class="canvas-action-danger"
+                  (click)="removeQuestion(questionPageSummaries()[activeQuestionPageIndex()].start + qi)"
+                  title="Eliminar" [disabled]="s.questions.length <= 1"><span
+                    class="material-symbols-outlined">delete</span></button>
+              </div>
+            </li>
+            }
+          </ul>
+          <button type="button" class="mobile-add-question-btn" (click)="openAddQuestionAfter(activeQuestionIndex())">
+            <span class="material-symbols-outlined">add</span>
+            Agregar pregunta
+          </button>
+          }
         </div>
 
         @if (addQuestionPanel) {
@@ -513,7 +577,7 @@
   </div>
   }
 
-  @if (currentTab === 'preview') {
+  @if (currentTab() === 'preview') {
   <div class="editor-stage public-preview-studio">
     <section class="public-preview-workbench" [class.is-phone]="previewDevice === 'mobile'"
       [class.is-desktop]="previewDevice !== 'mobile'">
@@ -556,7 +620,7 @@
   </div>
   }
 
-  @if (currentTab === 'collect') {
+  @if (currentTab() === 'collect') {
   <div class="editor-stage share-simple-stage">
     <div class="share-simple-container">
       <div class="share-simple-top">
@@ -579,9 +643,9 @@
                   Configuración de encuesta
                 </button>
                 <button type="button" (click)="downloadQrCode(); showShareDropdown.set(false)"
-                  [disabled]="s.status !== 'activo'">
+                  [disabled]="s.status !== 'activo' || qrDownloading()">
                   <span class="material-symbols-outlined">download</span>
-                  Descargar QR
+                  {{ qrDownloading() ? 'Descargando…' : 'Descargar QR' }}
                 </button>
               </div>
               }
@@ -747,7 +811,7 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
   </div>
   }
 
-  @if (currentTab === 'analyze') {
+  @if (currentTab() === 'analyze') {
   <div class="editor-stage inline-analytics-stage">
     <div class="inline-results-content">
       <header class="inline-analytics-header">

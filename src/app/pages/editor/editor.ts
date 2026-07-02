@@ -155,7 +155,6 @@ export class EditorPage implements OnInit, OnDestroy {
   survey = signal<Survey | null>(null);
   isNew = signal(false);
   saved = signal(false);
-  preview = signal(false);
   isSaving = signal(false);
   saveError = signal<string | null>(null);
   infoMessage = signal<string | null>(null);
@@ -180,8 +179,23 @@ export class EditorPage implements OnInit, OnDestroy {
     this.showAnalyticsModal.set(false);
   }
 
+  // Recuerda qué elemento tenía el foco antes de abrir un modal, para
+  // devolverlo ahí al cerrarlo (si no, el usuario "pierde" su lugar en la página).
+  private lastFocusedElement: HTMLElement | null = null;
+
+  private captureFocus(): void {
+    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+
+  private restoreFocus(): void {
+    const el = this.lastFocusedElement;
+    this.lastFocusedElement = null;
+    if (el && document.contains(el)) el.focus();
+  }
+
   closeDialogModal(): void {
     this.dialogModal.set(null);
+    this.restoreFocus();
   }
 
   confirmDialogModal(): void {
@@ -203,8 +217,10 @@ export class EditorPage implements OnInit, OnDestroy {
 
   // #3 Persistent save status
   hasUnsavedChanges = signal(false);
+  saveFailed = signal(false);
   readonly saveStatusLabel = computed(() => {
     if (this.isSaving()) return { text: 'Guardando…', icon: 'sync', state: 'saving' };
+    if (this.saveFailed()) return { text: 'Error al guardar — clic para reintentar', icon: 'error', state: 'error' };
     if (this.hasUnsavedChanges()) return { text: 'Sin guardar', icon: 'circle', state: 'unsaved' };
     if (this.saved()) return { text: 'Guardado', icon: 'check_circle', state: 'saved' };
     return { text: 'Guardado', icon: 'check_circle', state: 'idle' };
@@ -235,6 +251,7 @@ export class EditorPage implements OnInit, OnDestroy {
   @ViewChildren(SurveySimulatorComponent) simulators!: QueryList<SurveySimulatorComponent>;
   previewResetKey = signal(0);
   qrSize = signal(360);
+  qrDownloading = signal(false);
   qrColor = signal('#111827');
   selectedQrPreset = signal<QrPresetId>('flyer');
   qrCtaText = signal('Escanea para responder');
@@ -388,10 +405,11 @@ export class EditorPage implements OnInit, OnDestroy {
   private copiedElementStyles: Record<string, any> | null = null;
   private infoMessageTimer: ReturnType<typeof setTimeout> | null = null;
   private saveErrorTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Customization Tabs (Canva Style)
 
-  currentTab: EditorTab = 'design';
+  currentTab = signal<EditorTab>('design');
   designCenterTab: DesignCenterTab = 'templates';
 
   previewDevice: 'desktop' | 'tablet' | 'mobile' = 'desktop';
@@ -407,7 +425,7 @@ export class EditorPage implements OnInit, OnDestroy {
   };
 
   effectiveRightSidebarWidth(): number {
-    if (this.currentTab === 'design') return Math.min(Math.max(300, this.rightSidebarWidth), 560);
+    if (this.currentTab() === 'design') return Math.min(Math.max(300, this.rightSidebarWidth), 560);
     return Math.max(300, this.rightSidebarWidth);
   }
 
@@ -417,7 +435,7 @@ export class EditorPage implements OnInit, OnDestroy {
 
   // Contextual Focus
   focusSettings(section?: 'welcome' | 'questions' | 'end', index?: number) {
-    this.currentTab = 'design';
+    this.currentTab.set('design');
     if (section) this.activeSection.set(section);
     if (index !== undefined) this.activeQuestionIndex.set(index);
   }
@@ -437,6 +455,22 @@ export class EditorPage implements OnInit, OnDestroy {
     this.saveError.set(message);
     if (this.saveErrorTimer) clearTimeout(this.saveErrorTimer);
     this.saveErrorTimer = setTimeout(() => this.saveError.set(null), 4200);
+  }
+
+  // Da un mensaje más útil que "no se pudo guardar" cuando se puede saber
+  // por qué falló (sin conexión, red inalcanzable, timeout del servidor).
+  private describeSaveError(error: unknown, fallback: string): string {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return 'Sin conexión a internet. Revisa tu red; reintentaremos automáticamente.';
+    }
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+      return 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+    }
+    if (/timeout/i.test(message)) {
+      return 'El servidor tardó demasiado en responder. Inténtalo de nuevo en unos segundos.';
+    }
+    return fallback;
   }
 
 
@@ -2438,13 +2472,13 @@ export class EditorPage implements OnInit, OnDestroy {
 
     const tabParam = this.route.snapshot.queryParamMap.get('tab');
     if (tabParam === 'analyze') {
-      this.currentTab = 'analyze';
+      this.currentTab.set('analyze');
     } else if (tabParam === 'preview') {
-      this.currentTab = 'preview';
+      this.currentTab.set('preview');
     } else if (tabParam === 'collect') {
-      this.currentTab = 'collect';
+      this.currentTab.set('collect');
     } else if (tabParam === 'design') {
-      this.currentTab = 'design';
+      this.currentTab.set('design');
     }
   }
 
@@ -2463,6 +2497,10 @@ export class EditorPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.commitRemoveQuestion();
+    if (this.saveRetryTimer) {
+      clearTimeout(this.saveRetryTimer);
+      this.saveRetryTimer = null;
+    }
     if (this.survey() && !this.isSaving()) {
       void this.executeSave();
     }
@@ -2845,6 +2883,13 @@ export class EditorPage implements OnInit, OnDestroy {
     }
   }
 
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasUnsavedChanges()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
   private pushToHistory() {
     if (this.isUndoingRedoing) return;
     const state = JSON.stringify(this.survey());
@@ -2880,6 +2925,15 @@ export class EditorPage implements OnInit, OnDestroy {
     try {
       const state = JSON.parse(stateJson);
       this.survey.set(state);
+
+      // Deshacer/rehacer puede cambiar cuántas preguntas o páginas existen;
+      // si el foco quedó fuera de rango, el usuario ve un inspector/lienzo
+      // vacío sin entender por qué. Lo recortamos al último elemento válido.
+      const questionCount = state?.questions?.length ?? 0;
+      this.activeQuestionIndex.set(Math.max(0, Math.min(this.activeQuestionIndex(), questionCount - 1)));
+      const pageCount = this.questionPageSummaries().length;
+      this.activeQuestionPageIndex.set(Math.max(0, Math.min(this.activeQuestionPageIndex(), pageCount - 1)));
+
       this.queueSave();
     } finally {
       this.isUndoingRedoing = false;
@@ -3438,10 +3492,22 @@ export class EditorPage implements OnInit, OnDestroy {
       }))
     };
 
+    const insertIndex = index + 1;
+    const oldBreaks = this.normalizePageBreaks(survey.questions.length, survey.metadata?.questionPageBreaks);
+    const targetPageIndex = this.pageIndexForQuestion(index, oldBreaks);
+    const nextBreaks = this.pageBreaksAfterQuestionInsert(oldBreaks, insertIndex, targetPageIndex);
     const questions = [...survey.questions];
-    questions.splice(index + 1, 0, clone);
-    this.survey.set(this.normalizeSurvey({ ...survey, questions }));
-    this.activeQuestionIndex.set(index + 1);
+    questions.splice(insertIndex, 0, clone);
+    this.survey.set(this.normalizeSurvey({
+      ...survey,
+      questions,
+      metadata: {
+        ...this.ensureMetadata(survey.metadata),
+        questionPageBreaks: nextBreaks,
+        paginationMode: nextBreaks.length > 1 ? 'paged' : 'all-at-once'
+      }
+    }));
+    this.activeQuestionIndex.set(insertIndex);
     this.activeSection.set('questions');
     this.queueSave();
   }
@@ -4348,6 +4414,7 @@ export class EditorPage implements OnInit, OnDestroy {
     const validationError = checklist.find((item) => !item.ok)?.detail ?? null;
     if (validationError) {
       this.showError(validationError);
+      this.captureFocus();
       this.showPublishChecklist.set(true);
       return;
     }
@@ -4362,13 +4429,14 @@ export class EditorPage implements OnInit, OnDestroy {
       }
 
       this.survey.set(savedSurvey);
-      this.currentTab = 'collect';
+      this.currentTab.set('collect');
       this.pulseSavedState();
       this.showInfo(survey.status === 'activo' ? 'Publicación actualizada.' : 'Encuesta publicada.');
       this.showPublishChecklist.set(false);
+      this.restoreFocus();
     } catch (error) {
       console.error('Error publishing survey:', error);
-      this.showError('No se pudo publicar la encuesta.');
+      this.showError(this.describeSaveError(error, 'No se pudo publicar la encuesta.'));
     } finally {
       this.isSaving.set(false);
     }
@@ -4516,9 +4584,15 @@ export class EditorPage implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.saveRetryTimer) {
+      clearTimeout(this.saveRetryTimer);
+      this.saveRetryTimer = null;
+    }
+
     this.pendingSave = false;
     this.isSaving.set(true);
     this.saveError.set(null);
+    this.saveFailed.set(false);
     const saveSnapshot = this.normalizeSurvey(survey);
 
     try {
@@ -4532,7 +4606,9 @@ export class EditorPage implements OnInit, OnDestroy {
       }
     } catch (error) {
       console.error('Error saving survey:', error);
-      this.showError('No se pudieron guardar los cambios.');
+      this.saveFailed.set(true);
+      this.showError(`${this.describeSaveError(error, 'No se pudieron guardar los cambios.')} Reintentando en unos segundos…`);
+      this.scheduleSaveRetry();
     } finally {
       this.isSaving.set(false);
       if (this.pendingSave) {
@@ -4542,6 +4618,16 @@ export class EditorPage implements OnInit, OnDestroy {
     }
   }
 
+  private scheduleSaveRetry(): void {
+    if (this.saveRetryTimer) return;
+    this.saveRetryTimer = setTimeout(() => {
+      this.saveRetryTimer = null;
+      if (this.hasUnsavedChanges() && !this.isSaving()) {
+        void this.executeSave();
+      }
+    }, 6000);
+  }
+
   queueSave(): void {
     this.pushToHistory();
     this.hasUnsavedChanges.set(true);
@@ -4549,23 +4635,24 @@ export class EditorPage implements OnInit, OnDestroy {
   }
 
   setCurrentTab(tab: EditorTab): void {
-    this.currentTab = tab;
-    this.preview.set(tab === 'preview');
+    this.currentTab.set(tab);
   }
 
   closePublishChecklist(): void {
     this.showPublishChecklist.set(false);
+    this.restoreFocus();
   }
 
   openPublishChecklist(): void {
     const survey = this.survey();
     if (!survey) return;
+    this.captureFocus();
     this.publishChecklist.set(this.getPublishChecklist(survey));
     this.showPublishChecklist.set(true);
   }
 
   goToAnalytics(): void {
-    this.currentTab = 'analyze';
+    this.currentTab.set('analyze');
   }
 
   analyticsMetrics() {
@@ -5149,7 +5236,7 @@ export class EditorPage implements OnInit, OnDestroy {
   }
 
   goToShareFromResults(): void {
-    this.currentTab = 'collect';
+    this.currentTab.set('collect');
     this.activeShareSection.set('link');
   }
 
@@ -5170,9 +5257,15 @@ export class EditorPage implements OnInit, OnDestroy {
 
   async downloadQrCode(): Promise<void> {
     const survey = this.survey();
-    if (!survey) return;
+    if (!survey || this.qrDownloading()) return;
+
+    this.qrDownloading.set(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
-      const response = await fetch(this.getQrCodeUrl());
+      const response = await fetch(this.getQrCodeUrl(), { signal: controller.signal });
+      if (!response.ok) throw new Error(`QR request failed with status ${response.status}`);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -5188,6 +5281,9 @@ export class EditorPage implements OnInit, OnDestroy {
       console.error('Error al descargar el QR:', error);
       window.open(this.getQrCodeUrl(), '_blank');
       this.showInfo('Se abrió el QR en una nueva pestaña.');
+    } finally {
+      clearTimeout(timeoutId);
+      this.qrDownloading.set(false);
     }
   }
 
@@ -5466,6 +5562,17 @@ export class EditorPage implements OnInit, OnDestroy {
     });
   });
 
+  // El lienzo visual (arrastrar/redimensionar) no es viable en pantallas táctiles
+  // angostas; en su lugar, la pestaña "Crear" muestra esta lista simple de
+  // preguntas de la página activa, reutilizando las mismas acciones del lienzo.
+  currentPageQuestionsForMobile(): Question[] {
+    const survey = this.survey();
+    if (!survey) return [];
+    const page = this.questionPageSummaries()[this.activeQuestionPageIndex()];
+    if (!page) return [];
+    return survey.questions.slice(page.start, page.end);
+  }
+
   pageTitle(pageIndex: number): string {
     return this.survey()?.metadata?.questionPageTitles?.[pageIndex]?.trim() || `Página ${pageIndex + 1}`;
   }
@@ -5484,6 +5591,7 @@ export class EditorPage implements OnInit, OnDestroy {
     this.openPageMenuIndex = null;
     const current = this.pageTitle(pageIndex);
     this.dialogInputValue = current;
+    this.captureFocus();
     this.dialogModal.set({
       type: 'prompt',
       title: 'Editar nombre de página',
@@ -5623,6 +5731,7 @@ export class EditorPage implements OnInit, OnDestroy {
 
     const page = pages[pageIndex];
     if (!page) return;
+    this.captureFocus();
     this.dialogModal.set({
       type: 'confirm',
       title: 'Eliminar página',
@@ -7071,9 +7180,24 @@ export class EditorPage implements OnInit, OnDestroy {
     const emptyPages = this.questionPageSummaries().filter((page) => page.count === 0).length;
     const validLogic = survey.questions.every((question) => (question.logic ?? []).every((rule) => {
       const target = rule.goTo;
-      return !target || target === 'end' || survey.questions.some((item) => item.id === target);
+      if (!target || target === 'end') return true;
+      if (target === question.id) return false; // salta a sí misma: bucle infinito para quien responde
+      return survey.questions.some((item) => item.id === target);
     }));
-    const hasBrokenImages = Boolean(survey.metadata?.brand?.logoUrl === '' || survey.questions.some((question) => question.imageUrl === ''));
+    const duplicateOptions = survey.questions.some((question) => {
+      if (!this.isChoiceType(question.type)) return false;
+      const labels = question.options
+        .map((option) => option.texto.trim().toLowerCase())
+        .filter((label) => label.length > 0);
+      return new Set(labels).size !== labels.length;
+    });
+    // Las imágenes se suben como data URI (base64); una referencia "rota" real
+    // es una cadena no vacía que ya no es ni un data URI válido ni una URL http(s)
+    // (por ejemplo, truncada al guardarse por un límite de tamaño del backend).
+    const isValidImageRef = (value?: string): boolean =>
+      !value || /^data:image\/[a-z0-9.+-]+;base64,/i.test(value) || /^https?:\/\/\S+$/i.test(value);
+    const hasBrokenImages = !isValidImageRef(survey.metadata?.brand?.logoUrl)
+      || survey.questions.some((question) => !isValidImageRef(question.imageUrl));
 
     return [
       { label: 'Título', ok: hasTitle, detail: hasTitle ? 'Listo.' : 'Agrega un título antes de publicar.' },
@@ -7081,7 +7205,8 @@ export class EditorPage implements OnInit, OnDestroy {
       { label: 'Páginas', ok: emptyPages === 0, detail: emptyPages === 0 ? 'Todas las páginas tienen contenido.' : `Hay ${emptyPages} página(s) sin preguntas.` },
       { label: 'Enunciados', ok: completeQuestions, detail: completeQuestions ? 'Todas las preguntas tienen texto.' : 'Hay preguntas sin enunciado.' },
       { label: 'Opciones', ok: completeOptions, detail: completeOptions ? 'Las preguntas de selección tienen opciones válidas.' : 'Cada pregunta de selección necesita al menos dos opciones válidas.' },
-      { label: 'Lógica condicional', ok: validLogic, detail: validLogic ? 'Los saltos apuntan a pantallas válidas.' : 'Hay una regla condicional con destino inválido.' },
+      { label: 'Opciones duplicadas', ok: !duplicateOptions, detail: !duplicateOptions ? 'No hay opciones repetidas.' : 'Hay una pregunta con opciones de respuesta repetidas.' },
+      { label: 'Lógica condicional', ok: validLogic, detail: validLogic ? 'Los saltos apuntan a pantallas válidas.' : 'Hay una regla condicional con destino inválido o que se repite a sí misma.' },
       { label: 'Recursos visuales', ok: !hasBrokenImages, detail: hasBrokenImages ? 'Revisa imágenes o logos faltantes.' : 'Sin recursos rotos detectados.' }
     ];
   }

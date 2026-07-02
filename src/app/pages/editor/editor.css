@@ -107,6 +107,11 @@
   cursor: not-allowed;
 }
 
+.history-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
 .topbar-divider {
   width: 1px;
   height: 24px;
@@ -133,6 +138,21 @@
 .btn-actualizar:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.btn-actualizar:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* Red de seguridad de accesibilidad: cualquier botón del topbar o los
+   paneles laterales que no tenga ya un estilo :focus-visible propio
+   recibe un contorno visible al navegar con teclado. */
+.editor-topbar button:focus-visible,
+.editor-sidebar-left button:focus-visible,
+.editor-sidebar-right button:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 .topbar-profile-btn {
@@ -255,6 +275,11 @@
   background: #ede9fe;
   color: #330568;
   border-color: #c4b5fd;
+}
+
+.editor-tab:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 /* Device Preview Toggles */
@@ -423,11 +448,14 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
+  border: none;
   border-radius: 20px;
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
   transition: background 0.25s, color 0.25s;
   white-space: nowrap;
+  cursor: default;
 }
 .topbar-save-status[data-state="saving"] {
   background: #eff6ff;
@@ -437,6 +465,10 @@
   background: #fff7ed;
   color: #c2410c;
 }
+.topbar-save-status[data-state="error"] {
+  background: #fef2f2;
+  color: #b91c1c;
+}
 .topbar-save-status[data-state="saved"] {
   background: #f0fdf4;
   color: #15803d;
@@ -444,6 +476,12 @@
 .topbar-save-status[data-state="idle"] {
   background: transparent;
   color: #94a3b8;
+}
+.topbar-save-status.is-clickable {
+  cursor: pointer;
+}
+.topbar-save-status.is-clickable:hover {
+  filter: brightness(0.95);
 }
 .save-status-icon {
   font-size: 14px;
@@ -1712,6 +1750,17 @@
 
   .editor-topbar-tabs, .editor-subheader-actions {
     width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    gap: 8px;
+  }
+
+  .editor-topbar-left {
+    width: 100%;
+  }
+
+  .editor-topbar-right {
+    width: 100%;
     justify-content: center;
     flex-wrap: wrap;
     gap: 8px;
@@ -1727,15 +1776,14 @@
     border-right: 0;
     border-bottom: 1px solid #e6e2ef;
     height: auto;
+    max-height: 260px;
   }
 
-  .editor-sidebar-right.custom-nav-active {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100% !important;
-    height: 100%;
-    z-index: 1000;
+  /* El panel de inspector (colores, fuentes, posición de elementos) es
+     inseparable del lienzo visual, que en móvil se reemplaza por
+     .mobile-canvas-fallback más abajo. */
+  .editor-sidebar-right {
+    display: none;
   }
 
   .canvas-scroll {
@@ -1750,16 +1798,168 @@
   .survey-cover-title-input {
     font-size: 28px;
   }
+
+  .builder-canvas-toolbar {
+    display: none;
+  }
+
+  .design-workspace {
+    display: none;
+  }
+
+  .mobile-canvas-fallback {
+    display: block;
+  }
+}
+
+.mobile-canvas-fallback {
+  display: none;
+}
+
+.mobile-canvas-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid #e9d8fd;
+  border-radius: 12px;
+  background: #f5f3ff;
+  color: #4c1d95;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobile-canvas-notice .material-symbols-outlined {
+  font-size: 20px;
+  color: #7c3aed;
+}
+
+.mobile-canvas-notice p {
+  margin: 0;
+}
+
+.mobile-canvas-form {
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-canvas-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b1710;
+}
+
+.mobile-canvas-field input,
+.mobile-canvas-field textarea {
+  border: 1px solid #d8cabb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 500;
+  color: #1f2937;
+  resize: vertical;
+}
+
+.mobile-question-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-question-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.mobile-question-item-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-question-item-text strong {
+  font-size: 13.5px;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-question-item-text small {
+  color: #667085;
+  font-size: 12px;
+}
+
+.mobile-question-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mobile-question-item-actions button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.mobile-question-item-actions button.canvas-action-danger {
+  color: #dc2626;
+}
+
+.mobile-add-question-btn {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed #d8cabb;
+  border-radius: 12px;
+  background: transparent;
+  color: #5a3424;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mobile-question-item-actions button:focus-visible,
+.mobile-add-question-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
 }
 
 @media (max-width: 480px) {
-  .editor-topbar-tabs .topbar-tab-btn {
+  .editor-topbar-tabs .editor-tab {
     padding: 6px 10px;
     font-size: 12px;
   }
-  
-  .subheader-btn span {
-    display: none; /* Icons only on very small mobile */
+
+  .editor-tab span:first-child {
+    display: none; /* oculta el número "1/2/3/4", deja solo el texto */
+  }
+
+  .save-status-text {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -6150,6 +6350,19 @@
     z-index: 2;
     background: #ffffff;
   }
+}
+
+.preview-floating-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  padding: 4px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
 }
 
 @media (max-width: 520px) {
