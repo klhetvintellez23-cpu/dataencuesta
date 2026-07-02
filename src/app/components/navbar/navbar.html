@@ -85,10 +85,9 @@
         <span class="material-symbols-outlined">logout</span>
       </button>
       } @else {
-      <button type="button" (click)="triggerAuth(true, $event)" class="site-nav-login">Acceder</button>
-      <app-wavy-button (click)="triggerAuth(false, $event)"
+      <app-wavy-button (click)="triggerAuth(true, $event)"
         className="px-7 py-3 editorial-gradient text-white font-bold rounded-full shadow-lg hover:shadow-primary/30 transition-all text-sm"
-        text="Crear cuenta">
+        text="Acceder">
       </app-wavy-button>
       }
       }
@@ -124,8 +123,7 @@
       <a routerLink="/dashboard" (click)="closeMobileMenu()" class="mobile-nav-primary">Ir al panel</a>
       <button type="button" (click)="logout()" class="mobile-nav-secondary">Cerrar sesión</button>
       } @else {
-      <button type="button" (click)="triggerAuth(false, $event)" class="mobile-nav-primary">Crear cuenta</button>
-      <button type="button" (click)="triggerAuth(true, $event)" class="mobile-nav-secondary">Acceder</button>
+      <button type="button" (click)="triggerAuth(true, $event)" class="mobile-nav-primary">Acceder</button>
       }
     </div>
   </div>

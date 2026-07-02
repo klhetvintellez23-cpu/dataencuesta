@@ -40,14 +40,10 @@
       </div>
     </section>
 
-    <nav class="sidebar-support-nav" aria-label="Soporte y configuración">
+    <nav class="sidebar-support-nav" aria-label="Soporte">
       <button class="sidebar-support-item" type="button" (click)="openHelpModal()">
         <span class="material-symbols-outlined">help</span>
         Ayuda
-      </button>
-      <button class="sidebar-support-item" type="button" (click)="openSettingsModal()">
-        <span class="material-symbols-outlined">settings</span>
-        Configuración
       </button>
     </nav>
 
@@ -156,16 +152,6 @@
                 <button type="button" (click)="openProfileModal()">
                   <span class="material-symbols-outlined">person</span>
                   Mi perfil
-                </button>
-                <button type="button" (click)="openSettingsModal()">
-                  <span class="material-symbols-outlined">settings</span>
-                  Configuración
-                </button>
-                <div class="dropdown-divider"></div>
-                <button type="button" class="premium-future-btn" disabled title="Próximamente disponible">
-                  <span class="material-symbols-outlined">workspace_premium</span>
-                  <span>Mejorar a Pro</span>
-                  <em class="premium-tag">Premium</em>
                 </button>
                 <div class="dropdown-divider"></div>
                 <button type="button" class="logout-btn" (click)="logoutUser()">
@@ -751,7 +737,6 @@
 
       <div class="modal-actions profile-actions">
         <button class="btn-cancel" type="button" (click)="closeProfileModal()">Cerrar</button>
-        <button class="btn-confirm" type="button" (click)="openSettingsModal(); closeProfileModal()">Configuración</button>
       </div>
     </div>
   </div>
