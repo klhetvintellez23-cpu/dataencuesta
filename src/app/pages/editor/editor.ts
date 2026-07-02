@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnDestroy, OnInit, QueryList, ViewChildren, signal, computed } from '@angular/core';
+import { Component, HostListener, NgZone, OnDestroy, OnInit, QueryList, ViewChildren, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject } from 'rxjs';
@@ -2383,13 +2383,24 @@ export class EditorPage implements OnInit, OnDestroy {
     private readonly surveyService: SurveyService,
     private readonly auth: AuthService,
     private readonly analyticsService: AnalyticsService,
-    private readonly supabaseService: SupabaseService
+    private readonly supabaseService: SupabaseService,
+    private readonly ngZone: NgZone
   ) {}
+
+  private boundMouseMove = (event: MouseEvent) => this.handleWindowMouseMove(event);
+  private boundMouseUp = () => this.handleWindowMouseUp();
 
   ngOnInit(): void {
     if (!this.ensureAuthenticated()) {
       return;
     }
+
+    // Registered outside NgZone so plain mouse movement (not dragging/resizing)
+    // doesn't trigger a change-detection pass across this very large component.
+    this.ngZone.runOutsideAngular(() => {
+      window.addEventListener('mousemove', this.boundMouseMove);
+      window.addEventListener('mouseup', this.boundMouseUp);
+    });
 
     this.saveSubject.pipe(debounceTime(1500)).subscribe(() => {
       void this.executeSave();
@@ -2440,9 +2451,26 @@ export class EditorPage implements OnInit, OnDestroy {
     if (this.realtimeChannel && this.supabaseService.client) {
       void this.supabaseService.client.removeChannel(this.realtimeChannel);
     }
+    window.removeEventListener('mousemove', this.boundMouseMove);
+    window.removeEventListener('mouseup', this.boundMouseUp);
   }
 
-  @HostListener('window:mousemove', ['$event'])
+  private handleWindowMouseMove(event: MouseEvent): void {
+    // Skip entering NgZone entirely when nothing is being dragged/resized,
+    // so idle mouse movement doesn't trigger change detection on this page.
+    if (!this.isResizing && !this.activeTransform) {
+      return;
+    }
+    this.ngZone.run(() => this.onMouseMove(event));
+  }
+
+  private handleWindowMouseUp(): void {
+    if (!this.isResizing && !this.activeTransform) {
+      return;
+    }
+    this.ngZone.run(() => this.onMouseUp());
+  }
+
   onMouseMove(event: MouseEvent): void {
     if (this.isResizing) {
       const newWidth = window.innerWidth - event.clientX;
@@ -2755,7 +2783,6 @@ export class EditorPage implements OnInit, OnDestroy {
     }
   }
 
-  @HostListener('window:mouseup')
   onMouseUp(): void {
     if (this.isResizing) {
       this.isResizing = false;
