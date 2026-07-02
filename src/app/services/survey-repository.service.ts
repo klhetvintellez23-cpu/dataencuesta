@@ -267,117 +267,131 @@ export class SurveyRepositoryService {
 
     const existingQuestions = existing.preguntas ?? [];
     const persistedQuestionIds = new Set(existingQuestions.map((question) => question.id));
-    const savedQuestionIds: string[] = [];
+    const supabase = this.supabase;
 
-    for (let index = 0; index < input.questions.length; index++) {
-      const question = input.questions[index];
-      const questionPayload = {
-        encuesta_id: input.id,
-        tipo: this.mapQuestionTypeToDb(question.type),
-        enunciado: question.text,
-        es_obligatoria: question.required,
-        metadatos: this.buildMetadata(question),
-        indice_orden: index
-      };
-
-      let questionId = question.id;
-
-      if (persistedQuestionIds.has(question.id)) {
-        const { error } = await this.supabase
-          .from('preguntas')
-          .update(questionPayload)
-          .eq('id', question.id);
-
-        if (error) {
-          console.error('Error updating question:', error);
-          return null;
-        }
-      } else {
-        const { data, error } = await this.supabase
-          .from('preguntas')
-          .insert(questionPayload)
-          .select()
-          .single();
-
-        if (error || !data) {
-          console.error('Error creating question:', error);
-          return null;
-        }
-
-        questionId = (data as SurveyQuestionRow).id;
-      }
-
-      savedQuestionIds.push(questionId);
-
-      if (question.type !== 'multiple-choice' && question.type !== 'multi-select' && question.type !== 'visual-choice') {
-        const { error } = await this.supabase
-          .from('opciones_pregunta')
-          .delete()
-          .eq('pregunta_id', questionId);
-
-        if (error) {
-          console.error('Error deleting non-choice options:', error);
-          return null;
-        }
-
-        continue;
-      }
-
-      const existingOptions = existingQuestions.find((item) => item.id === question.id)?.opciones_pregunta ?? [];
-      const persistedOptionIds = new Set(existingOptions.map((option) => option.id));
-      const savedOptionIds: string[] = [];
-
-      for (const option of question.options) {
-        const payload = {
-          pregunta_id: questionId,
-          texto: option.texto
+    // Each question (and its options) is independent of the others, so save
+    // them concurrently instead of one round-trip at a time. For a template
+    // with many questions this turns N*M sequential requests (~150ms each)
+    // into a single batch, which is what made survey creation feel frozen.
+    const questionResults = await Promise.all(
+      input.questions.map(async (question, index): Promise<string | null> => {
+        const questionPayload = {
+          encuesta_id: input.id,
+          tipo: this.mapQuestionTypeToDb(question.type),
+          enunciado: question.text,
+          es_obligatoria: question.required,
+          metadatos: this.buildMetadata(question),
+          indice_orden: index
         };
 
-        let optionId = option.id;
-        if (persistedOptionIds.has(option.id)) {
-          const { error } = await this.supabase
-            .from('opciones_pregunta')
-            .update(payload)
-            .eq('id', option.id);
+        let questionId = question.id;
+
+        if (persistedQuestionIds.has(question.id)) {
+          const { error } = await supabase
+            .from('preguntas')
+            .update(questionPayload)
+            .eq('id', question.id);
 
           if (error) {
-            console.error('Error updating option:', error);
+            console.error('Error updating question:', error);
             return null;
           }
         } else {
-          const { data, error } = await this.supabase
-            .from('opciones_pregunta')
-            .insert(payload)
+          const { data, error } = await supabase
+            .from('preguntas')
+            .insert(questionPayload)
             .select()
             .single();
 
           if (error || !data) {
-            console.error('Error creating option:', error);
+            console.error('Error creating question:', error);
             return null;
           }
 
-          optionId = (data as SurveyOptionRow).id;
+          questionId = (data as SurveyQuestionRow).id;
         }
 
-        savedOptionIds.push(optionId);
-      }
+        if (question.type !== 'multiple-choice' && question.type !== 'multi-select' && question.type !== 'visual-choice') {
+          const { error } = await supabase
+            .from('opciones_pregunta')
+            .delete()
+            .eq('pregunta_id', questionId);
 
-      const optionsToDelete = existingOptions
-        .map((option) => option.id)
-        .filter((optionId) => !savedOptionIds.includes(optionId));
+          if (error) {
+            console.error('Error deleting non-choice options:', error);
+            return null;
+          }
 
-      if (optionsToDelete.length > 0) {
-        const { error } = await this.supabase
-          .from('opciones_pregunta')
-          .delete()
-          .in('id', optionsToDelete);
+          return questionId;
+        }
 
-        if (error) {
-          console.error('Error deleting removed options:', error);
+        const existingOptions = existingQuestions.find((item) => item.id === question.id)?.opciones_pregunta ?? [];
+        const persistedOptionIds = new Set(existingOptions.map((option) => option.id));
+
+        const optionResults = await Promise.all(
+          question.options.map(async (option): Promise<string | null> => {
+            const payload = {
+              pregunta_id: questionId,
+              texto: option.texto
+            };
+
+            if (persistedOptionIds.has(option.id)) {
+              const { error } = await supabase
+                .from('opciones_pregunta')
+                .update(payload)
+                .eq('id', option.id);
+
+              if (error) {
+                console.error('Error updating option:', error);
+                return null;
+              }
+              return option.id;
+            }
+
+            const { data, error } = await supabase
+              .from('opciones_pregunta')
+              .insert(payload)
+              .select()
+              .single();
+
+            if (error || !data) {
+              console.error('Error creating option:', error);
+              return null;
+            }
+
+            return (data as SurveyOptionRow).id;
+          })
+        );
+
+        if (optionResults.some((id) => id === null)) {
           return null;
         }
-      }
+        const savedOptionIds = optionResults as string[];
+
+        const optionsToDelete = existingOptions
+          .map((option) => option.id)
+          .filter((optionId) => !savedOptionIds.includes(optionId));
+
+        if (optionsToDelete.length > 0) {
+          const { error } = await supabase
+            .from('opciones_pregunta')
+            .delete()
+            .in('id', optionsToDelete);
+
+          if (error) {
+            console.error('Error deleting removed options:', error);
+            return null;
+          }
+        }
+
+        return questionId;
+      })
+    );
+
+    if (questionResults.some((id) => id === null)) {
+      return null;
     }
+    const savedQuestionIds = questionResults as string[];
 
     const questionsToDelete = existingQuestions
       .map((question) => question.id)
