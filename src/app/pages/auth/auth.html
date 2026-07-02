@@ -35,42 +35,6 @@
           </div>
         }
 
-        <!-- Form -->
-        <form class="flex flex-col gap-8" (ngSubmit)="submit()">
-          <!-- Email Input -->
-          <div class="flex flex-col gap-2">
-            <label class="font-label-caps text-label-caps text-on-surface-variant uppercase" for="email">Correo Electrónico</label>
-            <input class="w-full bg-transparent border-0 border-b-2 border-surface-dim px-0 py-3 font-body-lg text-body-lg text-on-surface focus:ring-0 focus:border-primary-container transition-colors placeholder:text-surface-dim" id="email" placeholder="tu_correo@empresa.com" type="email" [ngModel]="email()" (ngModelChange)="email.set($event)" name="email" required/>
-          </div>
-
-          <!-- Password Input -->
-          <div class="flex flex-col gap-2">
-            <div class="flex justify-between items-center">
-              <label class="font-label-caps text-label-caps text-on-surface-variant uppercase" for="password">Contraseña</label>
-              <a class="font-label-caps text-label-caps text-primary-container hover:text-primary transition-colors" href="#">¿Olvidaste?</a>
-            </div>
-            <div class="relative w-full">
-              <input class="w-full bg-transparent border-0 border-b-2 border-surface-dim px-0 py-3 font-body-lg text-body-lg text-on-surface focus:ring-0 focus:border-primary-container transition-colors placeholder:text-surface-dim" id="password" placeholder="••••••••" [type]="showPassword() ? 'text' : 'password'" [ngModel]="password()" (ngModelChange)="password.set($event)" name="password" required/>
-              <button type="button" class="absolute right-0 top-1/2 -translate-y-1/2 text-surface-dim hover:text-primary transition-colors" (click)="togglePasswordVisibility()">
-                <span class="material-symbols-outlined">{{ showPassword() ? 'visibility_off' : 'visibility' }}</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Submit Button -->
-          <button class="mt-4 w-full bg-primary-container text-on-primary py-4 px-6 font-label-caps text-label-caps uppercase tracking-widest flex justify-center items-center gap-3 hover:opacity-85 transition-opacity disabled:opacity-50 rounded-DEFAULT" type="submit" [disabled]="loading()">
-            {{ loading() ? 'Procesando...' : 'Entrar' }}
-            <span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 0;">arrow_forward</span>
-          </button>
-        </form>
-
-        <!-- Divider -->
-        <div class="flex items-center gap-4">
-          <div class="h-px flex-1 bg-surface-variant"></div>
-          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">O continúa con</span>
-          <div class="h-px flex-1 bg-surface-variant"></div>
-        </div>
-
         <!-- Social Logins -->
         <div class="flex flex-col gap-4">
           <button class="w-full border border-surface-dim py-3 flex justify-center items-center gap-3 font-label-caps text-label-caps text-on-surface uppercase hover:bg-surface-container-low transition-colors rounded-DEFAULT" type="button">
@@ -82,14 +46,6 @@
             </svg>
             Google
           </button>
-        </div>
-
-        <!-- Footer Link -->
-        <div class="mt-4 text-center">
-          <p class="font-body-md text-body-md text-on-surface-variant">
-            ¿No tienes una cuenta? 
-            <a class="text-primary-container font-medium hover:text-primary transition-colors cursor-pointer" (click)="toggleMode()">Regístrate aquí</a>
-          </p>
         </div>
       </div>
     </section>
