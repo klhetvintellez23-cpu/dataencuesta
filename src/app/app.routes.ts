@@ -24,11 +24,13 @@ export const routes: Routes = [
   },
   {
     path: 'editor/new',
-    loadComponent: () => import('./pages/editor/editor').then(m => m.EditorPage)
+    loadComponent: () => import('./pages/editor/editor').then(m => m.EditorPage),
+    data: { preload: true }
   },
   {
     path: 'editor/:id',
-    loadComponent: () => import('./pages/editor/editor').then(m => m.EditorPage)
+    loadComponent: () => import('./pages/editor/editor').then(m => m.EditorPage),
+    data: { preload: true }
   },
   {
     path: 'analytics/:id',
