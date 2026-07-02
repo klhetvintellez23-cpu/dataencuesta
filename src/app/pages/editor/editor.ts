@@ -468,7 +468,25 @@ export class EditorPage implements OnInit, OnDestroy {
   selectionVisible = false;
   selectionPos = { x: 0, y: 0 };
 
-  @HostListener('document:selectionchange')
+  private boundSelectionChange = () => {
+    // Most selectionchange events are just the caret moving (collapsed selection).
+    // Skip entering NgZone for those when there's no floating bar to hide either.
+    const selection = window.getSelection();
+    const hasRealSelection = !!selection && !selection.isCollapsed && !!selection.toString().trim();
+    if (!hasRealSelection && !this.selectionVisible) {
+      return;
+    }
+    this.ngZone.run(() => this.onSelectionChange());
+  };
+
+  private boundDocumentClick = (event: MouseEvent) => {
+    // Nothing to react to unless the export dropdown is actually open.
+    if (!this.showExportDropdown()) {
+      return;
+    }
+    this.ngZone.run(() => this.onDocumentClick(event));
+  };
+
   onSelectionChange() {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
@@ -492,7 +510,6 @@ export class EditorPage implements OnInit, OnDestroy {
     }
   }
 
-  @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     const target = event.target as HTMLElement | null;
     if (!target?.closest('.inline-export-menu')) {
@@ -2395,11 +2412,13 @@ export class EditorPage implements OnInit, OnDestroy {
       return;
     }
 
-    // Registered outside NgZone so plain mouse movement (not dragging/resizing)
-    // doesn't trigger a change-detection pass across this very large component.
+    // Registered outside NgZone so plain mouse movement/clicks/selection changes
+    // don't each trigger a change-detection pass across this very large component.
     this.ngZone.runOutsideAngular(() => {
       window.addEventListener('mousemove', this.boundMouseMove);
       window.addEventListener('mouseup', this.boundMouseUp);
+      document.addEventListener('click', this.boundDocumentClick);
+      document.addEventListener('selectionchange', this.boundSelectionChange);
     });
 
     this.saveSubject.pipe(debounceTime(1500)).subscribe(() => {
@@ -2453,6 +2472,8 @@ export class EditorPage implements OnInit, OnDestroy {
     }
     window.removeEventListener('mousemove', this.boundMouseMove);
     window.removeEventListener('mouseup', this.boundMouseUp);
+    document.removeEventListener('click', this.boundDocumentClick);
+    document.removeEventListener('selectionchange', this.boundSelectionChange);
   }
 
   private handleWindowMouseMove(event: MouseEvent): void {
