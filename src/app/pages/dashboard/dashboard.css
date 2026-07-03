@@ -1263,8 +1263,7 @@ input {
     min-width: max-content;
   }
 
-  .folders-block,
-  .plan-card {
+  .folders-block {
     display: none;
   }
 
@@ -1314,19 +1313,6 @@ input {
     width: fit-content;
   }
 
-  .view-controls {
-    margin-left: 0;
-    justify-content: space-between;
-  }
-
-  .soft-select {
-    flex: 1;
-  }
-
-  .soft-select select {
-    width: 100%;
-  }
-
   .survey-tiles {
     grid-template-columns: 1fr;
   }
@@ -1342,11 +1328,6 @@ input {
 
   .survey-tiles.list-view .tile-body {
     border-radius: 0 0 18px 18px;
-  }
-
-  .help-fab {
-    right: 18px;
-    bottom: 18px;
   }
 }
 
@@ -1403,6 +1384,8 @@ input {
   padding: 32px 32px 40px;
   width: 100%;
   max-width: 640px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
   position: relative;
   box-shadow: 0 28px 80px rgba(33, 49, 69, 0.18);
   backdrop-filter: blur(20px) saturate(180%);
@@ -1769,7 +1752,7 @@ input {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 360px;
+  width: min(360px, calc(100vw - 24px));
   background: #ffffff;
   border-radius: 20px;
   border: 1px solid var(--line);
@@ -1783,7 +1766,7 @@ input {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 290px;
+  width: min(290px, calc(100vw - 24px));
   background: #ffffff;
   border-radius: 20px;
   border: 1px solid var(--line);
@@ -2474,11 +2457,13 @@ input {
 
 .tutorial-card {
   width: 480px;
+  max-width: 100%;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: #ffffff;
   border-radius: 24px;
   border: 1px solid var(--line);
   box-shadow: 0 25px 60px rgba(29, 27, 32, 0.25);
-  overflow: hidden;
   position: relative;
   display: flex;
   flex-direction: column;

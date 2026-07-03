@@ -592,7 +592,36 @@
   .admin-header {
     padding: 0 1.25rem;
   }
-  
+
+  .header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .breadcrumb-root {
+    display: none;
+  }
+
+  .breadcrumb-separator {
+    display: none;
+  }
+
+  .breadcrumb-current {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-right {
+    flex: 0 0 auto;
+  }
+
   .admin-content-viewport {
     padding: 1.25rem;
   }

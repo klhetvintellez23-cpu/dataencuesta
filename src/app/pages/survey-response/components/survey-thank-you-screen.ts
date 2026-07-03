@@ -559,6 +559,23 @@ type TransformMode = 'move' | 'resize' | 'stretch';
       .layout-timeline .thanks-rule {
         display: none;
       }
+
+      .thanks-card.positioned-layout {
+        min-height: auto !important;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .positioned-layout > .design-box {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 auto 16px !important;
+        transform: none !important;
+      }
     }
 
     .design-editable {

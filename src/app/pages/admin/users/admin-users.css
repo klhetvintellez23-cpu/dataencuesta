@@ -34,6 +34,12 @@
   box-shadow: var(--vp-shadow-md);
 }
 
+@media (max-width: 420px) {
+  .filter-deck {
+    padding: 0.85rem;
+  }
+}
+
 .dark .filter-deck {
   background-color: #0e0d16;
   border-color: #1f1d2b;
@@ -51,7 +57,7 @@
 .search-input-wrapper {
   position: relative;
   flex: 1;
-  min-width: 280px;
+  min-width: min(280px, 100%);
 }
 
 .search-icon {

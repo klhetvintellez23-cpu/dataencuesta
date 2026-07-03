@@ -218,6 +218,7 @@ export class EditorPage implements OnInit, OnDestroy {
   // #3 Persistent save status
   hasUnsavedChanges = signal(false);
   saveFailed = signal(false);
+  surveyConflictDetected = signal(false);
   readonly saveStatusLabel = computed(() => {
     if (this.isSaving()) return { text: 'Guardando…', icon: 'sync', state: 'saving' };
     if (this.saveFailed()) return { text: 'Error al guardar — clic para reintentar', icon: 'error', state: 'error' };
@@ -246,6 +247,7 @@ export class EditorPage implements OnInit, OnDestroy {
 
   // Feature: drag-and-drop option reorder
   private dragOptionIndex: number | null = null;
+  dragOverOptionIndex: number | null = null;
 
   // Feature: preview restart
   @ViewChildren(SurveySimulatorComponent) simulators!: QueryList<SurveySimulatorComponent>;
@@ -401,7 +403,9 @@ export class EditorPage implements OnInit, OnDestroy {
   // History Stack for Undo/Redo
   private historyStack: string[] = [];
   private historyIndex = -1;
+  private historyLimitWarned = false;
   private isUndoingRedoing = false;
+  private ignoreNextSurveyRealtimeUntil = 0;
   private copiedElementStyles: Record<string, any> | null = null;
   private infoMessageTimer: ReturnType<typeof setTimeout> | null = null;
   private saveErrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2492,6 +2496,12 @@ export class EditorPage implements OnInit, OnDestroy {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'envios', filter: `encuesta_id=eq.${surveyId}` }, () => {
         this.survey.update(s => s ? { ...s, responses_count: (s.responses_count ?? 0) + 1 } : s);
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'encuestas', filter: `id=eq.${surveyId}` }, () => {
+        // Ignora el eco de nuestro propio guardado: cada UPDATE que
+        // hacemos nosotros mismos dispara este mismo evento.
+        if (Date.now() < this.ignoreNextSurveyRealtimeUntil) return;
+        this.surveyConflictDetected.set(true);
+      })
       .subscribe();
   }
 
@@ -2902,8 +2912,15 @@ export class EditorPage implements OnInit, OnDestroy {
     this.historyStack.push(state);
 
     // Limit history size to 50
-    if (this.historyStack.length > 50) this.historyStack.shift();
-    else this.historyIndex++;
+    if (this.historyStack.length > 50) {
+      this.historyStack.shift();
+      if (!this.historyLimitWarned) {
+        this.historyLimitWarned = true;
+        this.showInfo('Llegaste al límite de 50 pasos de deshacer: los cambios más antiguos ya no se pueden recuperar.');
+      }
+    } else {
+      this.historyIndex++;
+    }
   }
 
   undo() {
@@ -3397,6 +3414,7 @@ export class EditorPage implements OnInit, OnDestroy {
   onOptionDrop(questionIndex: number, targetIndex: number): void {
     const from = this.dragOptionIndex;
     this.dragOptionIndex = null;
+    this.dragOverOptionIndex = null;
     if (from === null || from === targetIndex) return;
     this.survey.update(survey => {
       if (!survey) return survey;
@@ -3412,8 +3430,21 @@ export class EditorPage implements OnInit, OnDestroy {
     this.queueSave();
   }
 
-  onOptionDragOver(event: DragEvent): void {
+  onOptionDragOver(event: DragEvent, optionIndex: number): void {
     event.preventDefault();
+    if (this.dragOptionIndex === null || this.dragOptionIndex === optionIndex) return;
+    this.dragOverOptionIndex = optionIndex;
+  }
+
+  onOptionDragLeave(optionIndex: number): void {
+    if (this.dragOverOptionIndex === optionIndex) {
+      this.dragOverOptionIndex = null;
+    }
+  }
+
+  onOptionDragEnd(): void {
+    this.dragOptionIndex = null;
+    this.dragOverOptionIndex = null;
   }
 
   // Preview restart
@@ -3430,7 +3461,7 @@ export class EditorPage implements OnInit, OnDestroy {
     const question = survey.questions[index];
     if (!question) return;
 
-    const timeoutId = setTimeout(() => this.commitRemoveQuestion(), 5000);
+    const timeoutId = setTimeout(() => this.commitRemoveQuestion(), 8000);
     this.deletePendingQuestion.set({ question, index, timeoutId });
   }
 
@@ -3440,7 +3471,7 @@ export class EditorPage implements OnInit, OnDestroy {
     clearTimeout(pending.timeoutId);
     this.deletePendingQuestion.set(null);
 
-    const { index } = pending;
+    const { index, question: removedQuestion } = pending;
     this.survey.update((survey) => {
       if (!survey) return null;
 
@@ -3459,12 +3490,39 @@ export class EditorPage implements OnInit, OnDestroy {
         survey.metadata.canvas.screens = newScreens;
       }
 
+      // Cualquier otra pregunta con un salto condicional hacia la que se
+      // está eliminando quedaría apuntando a un id inexistente; se detecta
+      // recién al publicar si no se limpia aquí.
+      const questions = survey.questions
+        .filter((_, questionIndex) => questionIndex !== index)
+        .map((q) => {
+          if (!q.logic?.length) return q;
+          const logic = q.logic.filter((rule) => rule.goTo !== removedQuestion.id);
+          return logic.length === q.logic.length ? q : { ...q, logic };
+        });
+
+      // Los saltos de página son índices de pregunta; si la eliminada caía
+      // antes de un salto, hay que recorrer ese salto un lugar hacia atrás
+      // para que no se desalinee con las preguntas restantes.
+      const oldBreaks = this.normalizePageBreaks(survey.questions.length, survey.metadata?.questionPageBreaks);
+      const nextBreaks = oldBreaks.map((value) => (value > index ? value - 1 : value));
+
       return this.normalizeSurvey({
         ...survey,
-        questions: survey.questions.filter((_, questionIndex) => questionIndex !== index)
+        questions,
+        metadata: {
+          ...this.ensureMetadata(survey.metadata),
+          questionPageBreaks: nextBreaks
+        }
       });
     });
     this.activeQuestionIndex.update(idx => Math.max(0, idx - (idx >= index ? 1 : 0)));
+    const emptyPages = this.questionPageSummaries().filter((page) => page.count === 0).length;
+    if (emptyPages > 0) {
+      this.showInfo(emptyPages === 1
+        ? 'Una página quedó sin preguntas. Agrégale una o bórrala antes de publicar.'
+        : `${emptyPages} páginas quedaron sin preguntas. Agrégales contenido o bórralas antes de publicar.`);
+    }
     this.queueSave();
   }
 
@@ -4593,6 +4651,7 @@ export class EditorPage implements OnInit, OnDestroy {
     this.isSaving.set(true);
     this.saveError.set(null);
     this.saveFailed.set(false);
+    this.ignoreNextSurveyRealtimeUntil = Date.now() + 5000;
     const saveSnapshot = this.normalizeSurvey(survey);
 
     try {
@@ -4641,6 +4700,14 @@ export class EditorPage implements OnInit, OnDestroy {
   closePublishChecklist(): void {
     this.showPublishChecklist.set(false);
     this.restoreFocus();
+  }
+
+  reloadForSurveyConflict(): void {
+    window.location.reload();
+  }
+
+  dismissSurveyConflictWarning(): void {
+    this.surveyConflictDetected.set(false);
   }
 
   openPublishChecklist(): void {
@@ -5737,7 +5804,14 @@ export class EditorPage implements OnInit, OnDestroy {
       title: 'Eliminar página',
       message: `¿Estás seguro de que deseas eliminar "${this.pageTitle(pageIndex)}" y sus ${page.count} pregunta${page.count === 1 ? '' : 's'}?`,
       onConfirm: () => {
-        const questions = survey.questions.filter((_, index) => index < page.start || index >= page.end);
+        const removedIds = new Set(survey.questions.slice(page.start, page.end).map((q) => q.id));
+        const questions = survey.questions
+          .filter((_, index) => index < page.start || index >= page.end)
+          .map((q) => {
+            if (!q.logic?.length) return q;
+            const logic = q.logic.filter((rule) => !rule.goTo || !removedIds.has(rule.goTo));
+            return logic.length === q.logic.length ? q : { ...q, logic };
+          });
         const chunks = pages
           .filter((_, index) => index !== pageIndex)
           .map((item) => survey.questions.slice(item.start, item.end));

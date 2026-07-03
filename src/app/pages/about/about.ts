@@ -26,11 +26,12 @@ import { FooterComponent } from '../../components/footer/footer';
       margin-bottom: 1.5rem;
     }
     .blog-title {
-      font-size: 3rem;
+      font-size: clamp(2rem, 8vw, 3rem);
       line-height: 1.1;
       font-weight: 800;
       margin-bottom: 1.5rem;
       letter-spacing: -0.02em;
+      overflow-wrap: break-word;
     }
     .blog-meta {
       display: flex;

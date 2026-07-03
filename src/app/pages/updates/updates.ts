@@ -21,12 +21,13 @@ import { FooterComponent } from '../../components/footer/footer';
       margin: 0 auto;
     }
     .magazine-title {
-      font-size: 5rem;
+      font-size: clamp(2.4rem, 11vw, 5rem);
       font-weight: 900;
       text-transform: uppercase;
       letter-spacing: -0.04em;
       line-height: 0.9;
       margin-bottom: 1rem;
+      overflow-wrap: break-word;
     }
     .magazine-subtitle {
       font-size: 1.5rem;

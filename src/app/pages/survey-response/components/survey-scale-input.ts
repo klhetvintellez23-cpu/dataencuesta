@@ -100,9 +100,11 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 
     @container (max-width: 520px) {
       .scale-grid,
-      .scale-grid.ten-grid {
+      .scale-grid.ten-grid,
+      .is-stars .scale-grid {
         grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
         gap: 8px;
+        max-width: 100%;
       }
 
       .scale-button {

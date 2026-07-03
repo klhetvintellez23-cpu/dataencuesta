@@ -51,6 +51,17 @@
     </div>
   </nav>
 
+  @if (surveyConflictDetected()) {
+  <div class="conflict-warning-banner" role="alert">
+    <span class="material-symbols-outlined">warning</span>
+    <p>Esta encuesta se modificó desde otra pestaña o dispositivo. Si sigues editando aquí, esos cambios podrían perderse al guardar.</p>
+    <div class="conflict-warning-actions">
+      <button type="button" (click)="reloadForSurveyConflict()">Recargar</button>
+      <button type="button" class="conflict-warning-dismiss" (click)="dismissSurveyConflictWarning()">Ignorar</button>
+    </div>
+  </div>
+  }
+
   @if (survey(); as s) {
   @if (currentTab() === 'design') {
   <div class="editor-body" [style.--sidebar-right-width.px]="effectiveRightSidebarWidth()">
@@ -1622,9 +1633,11 @@ Participa aquí: {{ s.status === 'activo' ? getShareLink() : 'http://localhost:4
         @for (option of q.options; track option.id; let oi = $index) {
         <div class="question-pro-option" draggable="true"
           (dragstart)="onOptionDragStart(oi)"
-          (dragover)="onOptionDragOver($event)"
+          (dragover)="onOptionDragOver($event, oi)"
+          (dragleave)="onOptionDragLeave(oi)"
+          (dragend)="onOptionDragEnd()"
           (drop)="onOptionDrop(editingQuestionIndex, oi)"
-          [class.option-drag-over]="false">
+          [class.option-drag-over]="dragOverOptionIndex === oi">
           <span class="option-drag-handle material-symbols-outlined" title="Arrastrar para reordenar">drag_indicator</span>
           <input type="text" [ngModel]="option.texto" (ngModelChange)="updateOption(editingQuestionIndex, oi, $event)"
             placeholder="Respuesta..." />

@@ -463,6 +463,22 @@ type TransformMode = 'move' | 'resize' | 'stretch';
       .question-card {
         padding: 24px;
       }
+
+      .question-card.positioned-layout {
+        min-height: auto !important;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .positioned-layout > .design-box {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 0 16px !important;
+        transform: none !important;
+      }
     }
 
     :host-context(.multi-question-page) .question-shell {
