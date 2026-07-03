@@ -10,13 +10,13 @@ module.exports = async function handler(req, res) {
   const DOMAIN = 'https://www.dataencuesta.com';
 
   // 3. Rutas Estáticas
+  // NOTA: /dashboard y /editor/* requieren sesión (no tienen contenido
+  // público indexable) y no deben estar en el sitemap.
   const staticRoutes = [
     '',              // Home
     '/tour',
     '/showcase',
     '/api-docs',
-    '/dashboard',
-    '/editor/new',
     '/templates',
     '/nosotros',
     '/novedades',

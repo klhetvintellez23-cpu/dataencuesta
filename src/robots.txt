@@ -1,2 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /editor/
+Disallow: /admin
+
+Sitemap: https://www.dataencuesta.com/sitemap.xml

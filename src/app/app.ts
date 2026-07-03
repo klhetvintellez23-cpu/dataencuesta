@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
+import { SeoService } from './services/seo.service';
 
 @Component({
   selector: 'app-root',
@@ -11,4 +12,8 @@ import { AuthModalComponent } from './components/auth-modal/auth-modal.component
   `,
   styles: [`:host { display: block; min-height: 100vh; }`]
 })
-export class App {}
+export class App {
+  constructor() {
+    inject(SeoService).init();
+  }
+}
