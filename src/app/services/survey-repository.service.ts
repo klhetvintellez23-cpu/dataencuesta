@@ -208,6 +208,21 @@ export class SurveyRepositoryService {
       error = retry.error;
     }
 
+    // Usuarios recién registrados: la fila en `perfiles` (de la que
+    // usuario_id depende por FK) se crea de forma asíncrona apenas inicia
+    // la sesión y puede no estar lista todavía. Un solo reintento tras una
+    // breve espera cubre esa ventana sin enmascarar errores reales.
+    if (error && this.isForeignKeyViolation(error)) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const retry = await this.supabase
+        .from('encuestas')
+        .insert(payload)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
+
     if (error) {
       console.error('Error creating survey:', error);
       return null;
@@ -559,5 +574,11 @@ export class SurveyRepositoryService {
   private isMissingMetadataColumnError(error: { message?: string; code?: string }): boolean {
     const message = error.message?.toLowerCase() ?? '';
     return message.includes('metadatos') && (message.includes('column') || message.includes('schema'));
+  }
+
+  private isForeignKeyViolation(error: { message?: string; code?: string }): boolean {
+    if (error.code === '23503') return true;
+    const message = error.message?.toLowerCase() ?? '';
+    return message.includes('foreign key') || message.includes('violates foreign key constraint');
   }
 }
