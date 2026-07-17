@@ -32,24 +32,8 @@ export class AdminLayoutComponent implements OnInit {
     void this.adminDataService.loadAuditLogs();
   }
 
-  readonly isDarkMode = signal<boolean>(
-    document.documentElement.classList.contains('dark') || 
-    localStorage.getItem('dataencuesta-theme') === 'dark'
-  );
-
   readonly showMobileSidebar = signal<boolean>(false);
   readonly showUserDropdown = signal<boolean>(false);
-
-  toggleDarkMode(): void {
-    const next = !this.isDarkMode();
-    this.isDarkMode.set(next);
-    localStorage.setItem('dataencuesta-theme', next ? 'dark' : 'light');
-    if (next) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }
 
   toggleMobileSidebar(): void {
     this.showMobileSidebar.update(v => !v);

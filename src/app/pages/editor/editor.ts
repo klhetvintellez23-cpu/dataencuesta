@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, NgZone, OnDestroy, OnInit, QueryList, ViewChildren, signal, computed } from '@angular/core';
+import { Component, DoCheck, HostListener, NgZone, OnDestroy, OnInit, QueryList, ViewChildren, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject } from 'rxjs';
@@ -151,7 +151,7 @@ interface QrPreset {
   templateUrl: './editor.html',
   styleUrls: ['./editor.css', './editor-canvas.css', './editor-share-results.css']
 })
-export class EditorPage implements OnInit, OnDestroy {
+export class EditorPage implements OnInit, OnDestroy, DoCheck {
   survey = signal<Survey | null>(null);
   isNew = signal(false);
   saved = signal(false);
@@ -2505,7 +2505,31 @@ export class EditorPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  // Bloquea el scroll del fondo mientras cualquier modal a pantalla completa
+  // del editor está abierto (en móvil, sin esto, el swipe se lo lleva la
+  // página de atrás en vez del modal). Los flags que controlan estos modales
+  // son una mezcla de propiedades planas y signals históricas, por lo que se
+  // revisan en cada ciclo de detección de cambios en vez de con un effect().
+  private lastEditorOverlayLockState = false;
+
+  ngDoCheck(): void {
+    const anyOverlayOpen =
+      this.addQuestionPanel ||
+      this.logicModalOpen ||
+      this.showTemplateModal ||
+      this.questionEditorOpen ||
+      this.showPublishChecklist() ||
+      this.showAnalyticsModal() ||
+      this.dialogModal() !== null;
+
+    if (anyOverlayOpen !== this.lastEditorOverlayLockState) {
+      document.body.style.overflow = anyOverlayOpen ? 'hidden' : '';
+      this.lastEditorOverlayLockState = anyOverlayOpen;
+    }
+  }
+
   ngOnDestroy(): void {
+    document.body.style.overflow = '';
     this.commitRemoveQuestion();
     if (this.saveRetryTimer) {
       clearTimeout(this.saveRetryTimer);

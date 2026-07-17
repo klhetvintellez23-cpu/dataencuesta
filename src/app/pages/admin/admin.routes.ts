@@ -4,6 +4,7 @@ import { AdminDashboardComponent } from './dashboard/admin-dashboard';
 import { AdminUsersComponent } from './users/admin-users';
 import { AdminUserProfileComponent } from './user-profile/admin-user-profile';
 import { AdminAuditLogsComponent } from './audit-logs/admin-audit-logs';
+import { AdminSurveysComponent } from './surveys/admin-surveys';
 
 export const adminRoutes: Routes = [
   {
@@ -21,6 +22,10 @@ export const adminRoutes: Routes = [
       {
         path: 'user-profile/:id',
         component: AdminUserProfileComponent
+      },
+      {
+        path: 'surveys',
+        component: AdminSurveysComponent
       },
       {
         path: 'audit-logs',

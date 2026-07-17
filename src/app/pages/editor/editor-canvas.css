@@ -747,6 +747,8 @@
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   animation: animFadeUp 0.2s ease-out;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .template-modal {
@@ -1974,7 +1976,7 @@
 }
 
 /* Survey logic modal */
-.logic-modal-backdrop{position:fixed;inset:0;z-index:9990;background:rgba(13,28,45,.10);backdrop-filter:blur(4px)}
+.logic-modal-backdrop{position:fixed;inset:0;z-index:9990;background:rgba(13,28,45,.10);backdrop-filter:blur(4px);overscroll-behavior:contain;touch-action:pan-y}
 
 .logic-modal{--logic-line:#e7e0ec;position:fixed;inset:50% auto auto 50%;z-index:9991;width:min(800px,calc(100vw - 32px));max-height:min(819px,calc(100dvh - 32px));display:grid;grid-template-columns:300px minmax(0,1fr);overflow:hidden;transform:translate(-50%,-50%);border:1px solid rgba(231,224,236,.8);border-radius:12px;background:#fff;box-shadow:0 28px 80px rgba(13,28,45,.16);color:#1d1b20;font-family:Inter,"Segoe UI",sans-serif}
 
@@ -2759,6 +2761,8 @@
   z-index: 9990;
   background: rgba(15, 23, 42, 0.32);
   backdrop-filter: blur(8px);
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .question-editor-modal {

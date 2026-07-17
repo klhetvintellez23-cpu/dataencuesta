@@ -705,3 +705,14 @@ app-editor {
   scrollbar-color: #cbd5e1 transparent;
 }
 
+/* Evita el auto-zoom de iOS Safari al enfocar un campo con font-size
+   menor a 16px. Se aplica solo en mobile para no alterar la tipografía
+   compacta de toolbars/paneles en escritorio. */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+

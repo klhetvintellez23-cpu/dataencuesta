@@ -2111,6 +2111,8 @@
   display: grid;
   place-items: center;
   animation: fadeInOverlay 0.2s ease-out;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .shadcn-dialog-content {

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, computed, effect, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
@@ -180,7 +180,21 @@ export class DashboardPage implements OnInit, OnDestroy {
     public router: Router,
     public adminData: AdminDataService,
     private supabaseService: SupabaseService
-  ) {}
+  ) {
+    // Bloquea el scroll del fondo mientras cualquier modal/overlay está
+    // abierto: en móvil, sin esto, el gesto de swipe se lo lleva la página
+    // de atrás en vez del contenido del modal.
+    effect(() => {
+      const anyOverlayOpen =
+        this.showCreateModal() ||
+        this.showConfigModal() ||
+        this.showHelpModal() ||
+        this.showProfileModal() ||
+        this.showTutorial() ||
+        this.dialogModal() !== null;
+      document.body.style.overflow = anyOverlayOpen ? 'hidden' : '';
+    });
+  }
 
   ngOnInit(): void {
     if (!this.ensureAuthenticated()) {
@@ -214,6 +228,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.realtimeChannel && this.supabaseService.client) {
       void this.supabaseService.client.removeChannel(this.realtimeChannel);
     }
+    document.body.style.overflow = '';
   }
 
   async loadSurveys(): Promise<void> {

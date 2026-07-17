@@ -31,7 +31,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-6 mt-8">
-          <app-wavy-button routerLink="/register" (click)="openAuth('register', $event)" colorScheme="primary-inverted"
+          <app-wavy-button routerLink="/register" (click)="openAuth('login', $event)" colorScheme="primary-inverted"
             className="!px-8 !py-4 font-bold !text-base lg:!text-lg shadow-[0_10px_30px_rgba(0,0,0,0.15)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.2)] transition-all transform hover:-translate-y-1"
             text="Crea una encuesta">
           </app-wavy-button>
@@ -179,7 +179,7 @@
           <p class="text-lg text-[#49454e] font-light leading-relaxed max-w-xl">
             Centraliza la creación, distribución y lectura de tus encuestas sin preparar reportes manuales.
           </p>
-          <app-wavy-button (click)="openAuth('register', $event)"
+          <app-wavy-button (click)="openAuth('login', $event)"
             className="px-10 sm:px-14 py-5 editorial-gradient text-white font-bold rounded-[2rem] shadow-2xl hover:shadow-primary/40 transition-all text-xl sm:text-2xl"
             text="Crear encuesta gratis">
           </app-wavy-button>
@@ -269,7 +269,7 @@
       <p>Crea tu primera encuesta gratis, compártela en minutos y empieza a leer resultados sin configurar nada
         complejo.</p>
       <div class="final-cta-actions">
-        <app-wavy-button (click)="openAuth('register', $event)"
+        <app-wavy-button (click)="openAuth('login', $event)"
           className="px-10 sm:px-14 py-5 bg-white text-[#440789] font-bold rounded-[2rem] shadow-xl transition-all text-xl"
           text="Crear encuesta gratis">
         </app-wavy-button>

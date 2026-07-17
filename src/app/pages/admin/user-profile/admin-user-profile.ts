@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -53,6 +53,12 @@ export class AdminUserProfileComponent {
 
   // Declarative Modal Control Signals
   readonly activeModal = signal<'role' | 'suspend' | 'block' | 'survey_unpublish' | null>(null);
+
+  // Bloquea el scroll del fondo mientras un modal está abierto (evita que
+  // el swipe en móvil se lo lleve la página de atrás en vez del modal).
+  private readonly lockScrollOnModal = effect(() => {
+    document.body.style.overflow = this.activeModal() !== null ? 'hidden' : '';
+  });
 
   // Modal form bindings
   readonly selectedNewRole = signal<UserRole>('User');
